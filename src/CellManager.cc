@@ -8,6 +8,9 @@
 namespace ORB_SLAM3 
 {
 
+//for execution time prediction
+static double g_pending_pred_ms = -1.0;
+
 CellManager& CellManager::getInstance()
 {
     static CellManager instance;
@@ -76,6 +79,31 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
         skip_frames--;
     }
 
+    //execution time prediction-------------------------
+    static std::ofstream et_log(exex_time_eval.txt, std::ios::app);
+    static bool header_written = false;
+    if(et_log && !header_written)
+    {
+	    et_log << "frame,predicted_ms,actual_ms\n";
+	    header_written = true;
+    }
+
+    if(g_pending_pred_ms >= 0.0)
+    {
+        et_log << std::fixed << std::setprecision(6)
+             << frame_num << "," << g_pending_pred_ms << "," << actualFrameTime << "\n";
+	
+	std::cout << "[execTimeEval frame ]" << frame_num
+            << " predicted=" << g_pending_pred_ms << "ms, "
+            << "actual=" << actualFrameTime << "ms" << std::endl;
+
+	
+	g_pending_pred_ms = -1.0;
+    }
+
+    //end exection time prediction log--------------------------
+
+
     // if no Cells were recorded, return
     if(elapsed_cells == 0)
     {
@@ -132,6 +160,9 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
         if( skip_frames ) skip_frames--; // decrement!
         frame_budget =  static_cast<int>( remaining_budget / time_per_cell);
     }
+
+    //store estimated time prediction for next frame
+    g_pending_pred_ms = frame_budget * time_per_cell;
 
     // Iterate through each mask size, calculating the number
     // of cells the proposed mask will cover, and compare that against
