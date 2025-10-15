@@ -80,7 +80,7 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     }
 
     //execution time prediction-------------------------
-    static std::ofstream et_log("exec_time_eval.txt, std::ios::app);
+    static std::ofstream et_log("exec_time_eval.txt", std::ios::app);
     static bool header_written = false;
     if(et_log && !header_written)
     {
@@ -123,9 +123,6 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
 
     // compare largest pyramid level against elapsed cells
     // if almost double, we can assume that stereo is done
-    static bool stereo_slam = (elapsed_cells > (pyramid_levels[0].nRows * pyramid_levels[0].nCols) * 1.8);
-
-    // Using actual time elapsed to do frame as the budget for the next frame
     static bool stereo_slam = (elapsed_cells > (pyramid_levels[0].nRows * pyramid_levels[0].nCols) * 1.8);
 
     // Using actual time elapsed to do frame as the budget for the next frame
@@ -270,3 +267,5 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
     
     // Print out the FOV_MASK
     file << " - FOV Mask: " << FOV_MASK.width << "x" << FOV_MASK.height << "\n";
+}
+}
