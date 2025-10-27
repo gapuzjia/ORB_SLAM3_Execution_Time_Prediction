@@ -84,14 +84,20 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     static bool header_written = false;
     if(et_log && !header_written)
     {
-	    et_log << "frame,predicted_ms,actual_ms\n";
+	    et_log << "frame,predicted_ms,actual_ms,avg_cells_per_frame,frame_budget,frames_over_budget\n";
 	    header_written = true;
     }
 
     if(g_pending_pred_ms >= 0.0)
     {
+        size_t frames_over = 0;
+        if(actualFrameTime > 50.0f) {  // 50ms is the frame time threshold
+            frames_over = static_cast<size_t>((actualFrameTime / 50.0f) - 1);
+        }
+        
         et_log << std::fixed << std::setprecision(6)
-             << frame_num << "," << g_pending_pred_ms << "," << actualFrameTime << "\n";
+             << frame_num << "," << g_pending_pred_ms << "," << actualFrameTime << ","
+             << getAverageCellsPerFrame() << "," << frame_budget << "," << frames_over << "\n";
 	
 	std::cout << "[execTimeEval frame ]" << frame_num
             << " predicted=" << g_pending_pred_ms << "ms, "
