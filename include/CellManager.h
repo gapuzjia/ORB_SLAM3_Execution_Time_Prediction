@@ -38,6 +38,7 @@ class CellManager
 private:
     std::atomic<int> elapsed_cells;
     std::vector<int> cells_per_frame;
+    std::vector<std::atomic<int>> cells_per_level;  // Tracks cells processed at each pyramid level
     std::atomic<int> frame_budget;
     std::atomic<bool> enableOasis = false;
     std::atomic<int> skip_frames = 0;
