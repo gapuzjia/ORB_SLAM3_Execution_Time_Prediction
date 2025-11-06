@@ -37,12 +37,11 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
             cells_per_level.emplace_back(std::make_unique<std::atomic<int>>(0));
     }
 
-    // If not skipping, increment the cell count for this level
-    if (!skip)
-    {
-        // atomic increment through the unique_ptr
-        (*cells_per_level[cell.level])++;
-    }
+    // NOTE: Do NOT increment per-level counters here - we haven't decided
+    // whether the cell will be skipped yet. The FOV mask and skip_frames
+    // checks below determine whether this cell is processed. We will
+    // increment the per-level counter after the skip decision so the
+    // mask can actually prevent cells from being counted.
 
     // check if we're skipping this cell, based on current FOV mask
     if( enableOasis )
@@ -75,6 +74,13 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
         // We're skipping this cell, so we need to decrement the frame's elapsed Cells
         // to keep out this from the tracking stats
         elapsed_cells--;
+    }
+
+    // Only count this cell for the pyramid level if it is NOT skipped.
+    if (!skip)
+    {
+        if (cells_per_level.size() > static_cast<size_t>(cell.level) && cells_per_level[cell.level])
+            (*cells_per_level[cell.level])++;
     }
 
     return skip;
