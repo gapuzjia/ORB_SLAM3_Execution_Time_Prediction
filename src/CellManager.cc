@@ -87,22 +87,25 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     static bool header_written = false;
     if(et_log && !header_written)
     {
-	    et_log << "frame,predicted_ms,actual_ms,avg_cells_per_frame,actual_cells,skipped\n";
-	    header_written = true;
+        // Add mask width/height to the execution-time log
+        et_log << "frame,predicted_ms,actual_ms,avg_cells_per_frame,actual_cells,skipped,mask_w,mask_h\n";
+        header_written = true;
     }
 
     if(g_pending_pred_ms >= 0.0)
     {        
-        et_log << std::fixed << std::setprecision(6)
-             << frame_num << "," << g_pending_pred_ms << "," << actualFrameTime << ","
-             << getAverageCellsPerFrame() << "," << elapsed_cells << "," << (was_skipped ? 1 : 0) << "\n";
+       et_log << std::fixed << std::setprecision(6)
+           << frame_num << "," << g_pending_pred_ms << "," << actualFrameTime << ","
+           << getAverageCellsPerFrame() << "," << elapsed_cells << "," << (was_skipped ? 1 : 0) << ","
+           << FOV_MASK.width << "," << FOV_MASK.height << "\n";
         et_log.flush();
 
     std::cout << "[frame]" << frame_num
             << " predicted=" << g_pending_pred_ms << "ms, "
             << "actual=" << actualFrameTime << "ms, "
             << "actual_cells=" << elapsed_cells << ", "
-            << "skipped=" << (was_skipped ? "yes" : "no") << std::endl;
+          << "skipped=" << (was_skipped ? "yes" : "no") << ", "
+          << "mask=" << FOV_MASK.width << "x" << FOV_MASK.height << std::endl;
 
 
     g_pending_pred_ms = -1.0;
