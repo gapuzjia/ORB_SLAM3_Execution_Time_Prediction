@@ -30,12 +30,16 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     if( pyramid_levels.size() < (cell.level+1) )
     {
         pyramid_levels.push_back({cell.nRows, cell.nCols});
-        cells_per_level.resize(pyramid_levels.size());
+        // Ensure cells_per_level has an entry for the new pyramid level.
+        // Use emplace_back to avoid moving std::atomic<int> (which is not moveable/copyable).
+        while (cells_per_level.size() < pyramid_levels.size())
+            cells_per_level.emplace_back(0);
     }
 
     // If not skipping, increment the cell count for this level
     if (!skip)
     {
+        // atomic increment
         cells_per_level[cell.level]++;
     }
 
@@ -242,7 +246,7 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     // Reset the per-level counters for next frame
     for (auto& level_count : cells_per_level)
     {
-        level_count = 0;
+        level_count.store(0);
     }
 }
 
@@ -296,8 +300,8 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
     std::cout << "Frame " << frame_num << " - Cells per pyramid level:\n";
     for (size_t i = 0; i < cells_per_level.size(); i++)
     {
-        file << "   Level " << i << ": " << cells_per_level[i] << " cells\n";
-        std::cout << "   Level " << i << ": " << cells_per_level[i] << " cells\n";
+        file << "   Level " << i << ": " << cells_per_level[i].load() << " cells\n";
+        std::cout << "   Level " << i << ": " << cells_per_level[i].load() << " cells\n";
     }
     std::cout << std::endl;
 }
