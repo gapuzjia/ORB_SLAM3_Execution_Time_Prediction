@@ -106,7 +106,10 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     if(et_log && !header_written)
     {
         // Add mask width/height to the execution-time log
-        et_log << "frame,predicted_ms,actual_ms,avg_cells_per_frame,actual_cells,skipped,mask_w,mask_h\n";
+        // Also append fixed per-pyramid-level columns L0..L7 for easier analysis
+        et_log << "frame,predicted_ms,actual_ms,avg_cells_per_frame,actual_cells,skipped,mask_w,mask_h";
+        for (int l = 0; l < 8; ++l) et_log << ",L" << l;
+        et_log << "\n";
         header_written = true;
     }
 
@@ -115,7 +118,18 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
        et_log << std::fixed << std::setprecision(6)
            << frame_num << "," << g_pending_pred_ms << "," << actualFrameTime << ","
            << getAverageCellsPerFrame() << "," << elapsed_cells << "," << (was_skipped ? 1 : 0) << ","
-           << FOV_MASK.width << "," << FOV_MASK.height << "\n";
+           << FOV_MASK.width << "," << FOV_MASK.height;
+
+        // Append per-level cell counts (L0..L7). If fewer levels exist, pad with zeros.
+        for (int l = 0; l < 8; ++l)
+        {
+            int val = 0;
+            if (l < static_cast<int>(cells_per_level.size()) && cells_per_level[l])
+                val = cells_per_level[l]->load();
+            et_log << "," << val;
+        }
+
+        et_log << "\n";
         et_log.flush();
 
     std::cout << "[frame]" << frame_num
