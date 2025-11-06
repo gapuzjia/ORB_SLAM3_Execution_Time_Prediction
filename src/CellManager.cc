@@ -30,6 +30,13 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     if( pyramid_levels.size() < (cell.level+1) )
     {
         pyramid_levels.push_back({cell.nRows, cell.nCols});
+        cells_per_level.resize(pyramid_levels.size());
+    }
+
+    // If not skipping, increment the cell count for this level
+    if (!skip)
+    {
+        cells_per_level[cell.level]++;
     }
 
     // check if we're skipping this cell, based on current FOV mask
@@ -231,6 +238,12 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
 
     // Reset for the next frame
     elapsed_cells = 0;
+    
+    // Reset the per-level counters for next frame
+    for (auto& level_count : cells_per_level)
+    {
+        level_count = 0;
+    }
 }
 
 // Calculate average Cells per frame
@@ -277,5 +290,15 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
     
     // Print out the FOV_MASK
     file << " - FOV Mask: " << FOV_MASK.width << "x" << FOV_MASK.height << "\n";
+
+    // Print cells processed per pyramid level
+    file << " - Cells per pyramid level:\n";
+    std::cout << "Frame " << frame_num << " - Cells per pyramid level:\n";
+    for (size_t i = 0; i < cells_per_level.size(); i++)
+    {
+        file << "   Level " << i << ": " << cells_per_level[i] << " cells\n";
+        std::cout << "   Level " << i << ": " << cells_per_level[i] << " cells\n";
+    }
+    std::cout << std::endl;
 }
 }
