@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <vector>
+#include <memory>
 #include <chrono>
 
 namespace ORB_SLAM3 
@@ -38,7 +39,10 @@ class CellManager
 private:
     std::atomic<int> elapsed_cells;
     std::vector<int> cells_per_frame;
-    std::vector<std::atomic<int>> cells_per_level;  // Tracks cells processed at each pyramid level
+    // Use unique_ptr to atomic<int> so the vector stores movable pointers instead
+    // of non-copyable/non-movable atomic<int> objects. This avoids vector
+    // reallocation/move problems while preserving atomic operations.
+    std::vector<std::unique_ptr<std::atomic<int>>> cells_per_level;  // Tracks cells processed at each pyramid level
     std::atomic<int> frame_budget;
     std::atomic<bool> enableOasis = false;
     std::atomic<int> skip_frames = 0;

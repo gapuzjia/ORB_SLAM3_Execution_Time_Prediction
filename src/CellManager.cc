@@ -31,16 +31,17 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     {
         pyramid_levels.push_back({cell.nRows, cell.nCols});
         // Ensure cells_per_level has an entry for the new pyramid level.
-        // Use emplace_back to avoid moving std::atomic<int> (which is not moveable/copyable).
+        // Store a unique_ptr to a newly-allocated atomic<int> so the vector
+        // only moves pointers (which are movable) and never the atomic objects.
         while (cells_per_level.size() < pyramid_levels.size())
-            cells_per_level.emplace_back(0);
+            cells_per_level.emplace_back(std::make_unique<std::atomic<int>>(0));
     }
 
     // If not skipping, increment the cell count for this level
     if (!skip)
     {
-        // atomic increment
-        cells_per_level[cell.level]++;
+        // atomic increment through the unique_ptr
+        (*cells_per_level[cell.level])++;
     }
 
     // check if we're skipping this cell, based on current FOV mask
@@ -246,7 +247,7 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     // Reset the per-level counters for next frame
     for (auto& level_count : cells_per_level)
     {
-        level_count.store(0);
+        if (level_count) level_count->store(0);
     }
 }
 
@@ -300,8 +301,10 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
     std::cout << "Frame " << frame_num << " - Cells per pyramid level:\n";
     for (size_t i = 0; i < cells_per_level.size(); i++)
     {
-        file << "   Level " << i << ": " << cells_per_level[i].load() << " cells\n";
-        std::cout << "   Level " << i << ": " << cells_per_level[i].load() << " cells\n";
+        int val = 0;
+        if (cells_per_level[i]) val = cells_per_level[i]->load();
+        file << "   Level " << i << ": " << val << " cells\n";
+        std::cout << "   Level " << i << ": " << val << " cells\n";
     }
     std::cout << std::endl;
 }
