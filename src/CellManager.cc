@@ -94,9 +94,11 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
              << frame_num << "," << g_pending_pred_ms << "," << actualFrameTime << ","
              << getAverageCellsPerFrame() << "," << elapsed_cells << "," << (skip_frames > 0 ? 1 : 0) << "\n";
 	
-	std::cout << "[execTimeEval frame ]" << frame_num
+	std::cout << "[frame]" << frame_num
             << " predicted=" << g_pending_pred_ms << "ms, "
-            << "actual=" << actualFrameTime << "ms" << std::endl;
+            << "actual=" << actualFrameTime << "ms, "
+            << "actual_cells=" << elapsed_cells << ", "
+            << "skipped=" << (skip_frames > 0 ? "yes" : "no") << std::endl;
 
 	
 	g_pending_pred_ms = -1.0;
