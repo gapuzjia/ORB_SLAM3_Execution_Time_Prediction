@@ -72,15 +72,18 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
 void CellManager::endFrame(const double& frame_num, double actualFrameTime)
 {
 
-    // if we're skipping frames, decrement the number of frames we need to skip
+    // if we're skipping frames, note it and decrement the number of frames we need to skip
+    bool was_skipped = false;
     if( skip_frames )
     {
         std::cout << "Skipped/Dropped frame " << frame_num << std::endl;
+        was_skipped = true;
         skip_frames--;
     }
 
     //execution time prediction-------------------------
-    static std::ofstream et_log("exec_time_eval.txt", std::ios::app);
+    // Open the log file in truncate mode so each program run overwrites the file
+    static std::ofstream et_log("exec_time_eval.txt", std::ios::out | std::ios::trunc);
     static bool header_written = false;
     if(et_log && !header_written)
     {
@@ -92,16 +95,17 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     {        
         et_log << std::fixed << std::setprecision(6)
              << frame_num << "," << g_pending_pred_ms << "," << actualFrameTime << ","
-             << getAverageCellsPerFrame() << "," << elapsed_cells << "," << (skip_frames > 0 ? 1 : 0) << "\n";
-	
-	std::cout << "[frame]" << frame_num
+             << getAverageCellsPerFrame() << "," << elapsed_cells << "," << (was_skipped ? 1 : 0) << "\n";
+        et_log.flush();
+
+    std::cout << "[frame]" << frame_num
             << " predicted=" << g_pending_pred_ms << "ms, "
             << "actual=" << actualFrameTime << "ms, "
             << "actual_cells=" << elapsed_cells << ", "
-            << "skipped=" << (skip_frames > 0 ? "yes" : "no") << std::endl;
+            << "skipped=" << (was_skipped ? "yes" : "no") << std::endl;
 
-	
-	g_pending_pred_ms = -1.0;
+
+    g_pending_pred_ms = -1.0;
     }
 
     //end exection time prediction log--------------------------
