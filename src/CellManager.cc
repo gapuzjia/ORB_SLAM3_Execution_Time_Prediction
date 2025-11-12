@@ -30,18 +30,9 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     if( pyramid_levels.size() < (cell.level+1) )
     {
         pyramid_levels.push_back({cell.nRows, cell.nCols});
-        // Ensure cells_per_level has an entry for the new pyramid level.
-        // Store a unique_ptr to a newly-allocated atomic<int> so the vector
-        // only moves pointers (which are movable) and never the atomic objects.
         while (cells_per_level.size() < pyramid_levels.size())
             cells_per_level.emplace_back(std::make_unique<std::atomic<int>>(0));
     }
-
-    // NOTE: Do NOT increment per-level counters here - we haven't decided
-    // whether the cell will be skipped yet. The FOV mask and skip_frames
-    // checks below determine whether this cell is processed. We will
-    // increment the per-level counter after the skip decision so the
-    // mask can actually prevent cells from being counted.
 
     // check if we're skipping this cell, based on current FOV mask
     if( enableOasis )
@@ -75,9 +66,7 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
         // to keep out this from the tracking stats
         elapsed_cells--;
     }
-
-    // Only count this cell for the pyramid level if it is NOT skipped.
-    if (!skip)
+    else
     {
         if (cells_per_level.size() > static_cast<size_t>(cell.level) && cells_per_level[cell.level])
             (*cells_per_level[cell.level])++;
@@ -90,8 +79,10 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
 void CellManager::endFrame(const double& frame_num, double actualFrameTime)
 {
 
-    // if we're skipping frames, note it and decrement the number of frames we need to skip
+    //flag to note if frame was skipped
     bool was_skipped = false;
+
+    // if we're skipping frames, decrement the number of frames we need to skip
     if( skip_frames )
     {
         std::cout << "Skipped/Dropped frame " << frame_num << std::endl;
@@ -100,13 +91,10 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     }
 
     //execution time prediction-------------------------
-    // Open the log file in truncate mode so each program run overwrites the file
     static std::ofstream et_log("exec_time_eval.txt", std::ios::out | std::ios::trunc);
     static bool header_written = false;
     if(et_log && !header_written)
     {
-        // Add mask width/height to the execution-time log
-        // Also append fixed per-pyramid-level columns L0..L7 for easier analysis
         et_log << "frame,predicted_ms,actual_ms,avg_cells_per_frame,actual_cells,skipped,mask_w,mask_h";
         for (int l = 0; l < 8; ++l) et_log << ",L" << l;
         et_log << "\n";
@@ -120,7 +108,7 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
            << getAverageCellsPerFrame() << "," << elapsed_cells << "," << (was_skipped ? 1 : 0) << ","
            << FOV_MASK.width << "," << FOV_MASK.height;
 
-        // Append per-level cell counts (L0..L7). If fewer levels exist, pad with zeros.
+        //per-level cell counts
         for (int l = 0; l < 8; ++l)
         {
             int val = 0;
@@ -316,7 +304,7 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
     // Print out the FOV_MASK
     file << " - FOV Mask: " << FOV_MASK.width << "x" << FOV_MASK.height << "\n";
 
-    // Print cells processed per pyramid level
+    //add per-level cell counts to log file
     file << " - Cells per pyramid level:\n";
     std::cout << "Frame " << frame_num << " - Cells per pyramid level:\n";
     for (size_t i = 0; i < cells_per_level.size(); i++)
