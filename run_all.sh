@@ -37,11 +37,12 @@ dataset-${dataset}_stereo_imu"
   echo "Saving results..."
   local result_folder="${DATE}_${result_folder_prefix}_${dataset}_${mask_size}_run_${run_number}"
   mkdir -p "$result_folder"
-  mv LocalMapTimeStats.txt ExecMean.txt LBA_Stats.txt TrackingTimeStats.txt SessionInfo.txt "$log_file" "$result_folder" 2>/dev/null
+  mv LocalMapTimeStats.txt ExecMean.txt LBA_Stats.txt TrackingTimeStats.txt SessionInfo.txt exec_time_eval.txt "$log_file" "$result_folder" 2>/dev/null
 
   # Move optional outputs if present
   for file in map_points.csv "f_dataset-${dataset}_stereo_imu.txt" \
-              "kf_dataset-${dataset}_stereo_imu.txt" "cellManager.txt"; do
+              "kf_dataset-${dataset}_stereo_imu.txt" "cellManager.txt" \
+     		"exec_time_eval.txt"; do
     [[ -f $file ]] && mv "$file" "$result_folder"
   done
   echo "Results saved in $result_folder"
