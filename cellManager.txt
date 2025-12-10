@@ -1,0 +1,490 @@
+ - Pyramid Level Cells: 
+   - Level 0: 20x12
+   - Level 1: 17x10
+   - Level 2: 14x8
+   - Level 3: 11x7
+   - Level 4: 9x5
+   - Level 5: 7x4
+   - Level 6: 6x3
+   - Level 7: 5x2
+ - Oasis Enabled
+Frame 1403636858.651666403 finished in 32.106800000 ms stats:
+ - Recorded Frames: 1
+ - Elapsed Cells: 1400
+ - Average Cells Per Frame: 1400.000000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 480 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636858.701666594 finished in 27.599500000 ms stats:
+ - Recorded Frames: 2
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1376.000000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636858.751666546 finished in 18.757100000 ms stats:
+ - Recorded Frames: 3
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1368.000000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636858.801666498 finished in 25.210600000 ms stats:
+ - Recorded Frames: 4
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1364.000000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636858.851666451 finished in 44.700200000 ms stats:
+ - Recorded Frames: 5
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1361.600000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636858.901666641 finished in 34.476900000 ms stats:
+ - Recorded Frames: 6
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1360.000000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636858.951666355 finished in 37.557400000 ms stats:
+ - Recorded Frames: 7
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1358.857142857
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.001666546 finished in 39.523800000 ms stats:
+ - Recorded Frames: 8
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1358.000000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.051666498 finished in 41.702400000 ms stats:
+ - Recorded Frames: 9
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1357.333333333
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.101666451 finished in 59.069200000 ms stats:
+ - Recorded Frames: 10
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1356.800000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.151666403 finished in 44.498700000 ms stats:
+ - Recorded Frames: 11
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1356.363636364
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.201666594 finished in 47.908500000 ms stats:
+ - Recorded Frames: 12
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1356.000000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.251666546 finished in 45.178100000 ms stats:
+ - Recorded Frames: 13
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1355.692307692
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.301666498 finished in 42.624500000 ms stats:
+ - Recorded Frames: 14
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1355.428571429
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.351666451 finished in 25.872200000 ms stats:
+ - Recorded Frames: 15
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1355.200000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.401666641 finished in 30.749900000 ms stats:
+ - Recorded Frames: 16
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1355.000000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.451666355 finished in 53.080300000 ms stats:
+ - Recorded Frames: 17
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1354.823529412
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.501666546 finished in 42.570300000 ms stats:
+ - Recorded Frames: 18
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1354.666666667
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.551666498 finished in 27.581800000 ms stats:
+ - Recorded Frames: 19
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1354.526315789
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.601666451 finished in 35.109900000 ms stats:
+ - Recorded Frames: 20
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1354.400000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.651666403 finished in 22.728600000 ms stats:
+ - Recorded Frames: 21
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1354.285714286
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.701666594 finished in 28.584000000 ms stats:
+ - Recorded Frames: 22
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1354.181818182
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.751666546 finished in 49.528300000 ms stats:
+ - Recorded Frames: 23
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1354.086956522
+ - Frame Budget in Cells: 0
+ - FOV Mask: 14x14
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.801666498 finished in 22.340700000 ms stats:
+ - Recorded Frames: 24
+ - Elapsed Cells: 1034
+ - Average Cells Per Frame: 1340.750000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 252 cells
+   Level 1: 234 cells
+   Level 2: 192 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.851666451 finished in 48.964300000 ms stats:
+ - Recorded Frames: 25
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1341.200000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 14x14
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.901666641 finished in 54.039700000 ms stats:
+ - Recorded Frames: 26
+ - Elapsed Cells: 1034
+ - Average Cells Per Frame: 1329.384615385
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 252 cells
+   Level 1: 234 cells
+   Level 2: 192 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636859.951666355 finished in 48.049400000 ms stats:
+ - Recorded Frames: 27
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1330.222222222
+ - Frame Budget in Cells: 0
+ - FOV Mask: 15x15
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636860.001666546 finished in 51.756000000 ms stats:
+ - Recorded Frames: 28
+ - Elapsed Cells: 1034
+ - Average Cells Per Frame: 1319.642857143
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 252 cells
+   Level 1: 234 cells
+   Level 2: 192 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636860.051666498 finished in 50.980800000 ms stats:
+ - Recorded Frames: 29
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1320.758620690
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636860.101666451 finished in 60.819400000 ms stats:
+ - Recorded Frames: 30
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1321.800000000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636860.151666403 finished in 67.203800000 ms stats:
+ - Recorded Frames: 31
+ - Elapsed Cells: 1352
+ - Average Cells Per Frame: 1322.774193548
+ - Frame Budget in Cells: 0
+ - FOV Mask: 13x13
+ - Cells per pyramid level:
+   Level 0: 432 cells
+   Level 1: 340 cells
+   Level 2: 224 cells
+   Level 3: 154 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
+Frame 1403636860.201666594 finished in 44.560000000 ms stats:
+ - Recorded Frames: 32
+ - Elapsed Cells: 896
+ - Average Cells Per Frame: 1309.437500000
+ - Frame Budget in Cells: 0
+ - FOV Mask: 22x22
+ - Cells per pyramid level:
+   Level 0: 208 cells
+   Level 1: 192 cells
+   Level 2: 154 cells
+   Level 3: 140 cells
+   Level 4: 90 cells
+   Level 5: 56 cells
+   Level 6: 36 cells
+   Level 7: 20 cells
