@@ -137,12 +137,6 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
         et_log << "\n";
         et_log.flush();
 
-    std::cout << "[frame]" << frame_num
-            << " predicted=" << g_pending_pred_ms << "ms, "
-            << "actual=" << actualFrameTime << "ms, "
-            << "actual_cells=" << elapsed_cells << ", "
-          << "skipped=" << (was_skipped ? "yes" : "no") << ", "
-          << "mask=" << FOV_MASK.width << "x" << FOV_MASK.height << std::endl;
 
 
     g_pending_pred_ms = -1.0;
@@ -154,7 +148,7 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     // if no Cells were recorded, return
     if(elapsed_cells == 0)
     {
-        frame_budget = static_cast<int>(1.0 / actualFrameTime * getAverageCellsPerFrame());
+	frame_budget = static_cast<int>(1.0 / actualFrameTime * getAverageCellsPerFrame());
         return;
     }
 
@@ -327,15 +321,12 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
 
     // Print cells processed per pyramid level
     file << " - Cells per pyramid level:\n";
-    std::cout << "Frame " << frame_num << " - Cells per pyramid level:\n";
     for (size_t i = 0; i < cells_per_level.size(); i++)
     {
         int val = 0;
         if (cells_per_level[i]) val = cells_per_level[i]->load();
         file << "   Level " << i << ": " << val << " cells\n";
-        std::cout << "   Level " << i << ": " << val << " cells\n";
     }
-    std::cout << std::endl;
 }
 }
 

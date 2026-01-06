@@ -1,7 +1,5 @@
 #!/bin/bash
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+set -e
 
 DATE="$(date +"%Y-%m-%d_%H-%M-%S")"
 
@@ -38,18 +36,22 @@ for ds in "${DATASETS[@]}"; do
       ./Examples/Stereo-Inertial/EuRoC_oasis.yaml \
       ./Datasets/EuRoc/$folder \
       ./Examples/Stereo-Inertial/EuRoC_TimeStamps/${ds}.txt \
-      dataset-${ds}_stereoinertial
+      dataset-${ds}_stereo_inertial
 
     OUT="${DATE}${ds}run${run}"
     mkdir -p "$OUT"
+    
+    RENAME_EXEC_TIME_EVAL="exec_time_eval_${ds}run${run}.txt"
+
+    mv exec_time_eval.txt "$RENAME_EXEC_TIME_EVAL"
 
     mv LocalMapTimeStats.txt TrackingTimeStats.txt LBA_Stats.txt ExecMean.txt \
-       SessionInfo.txt 2>/dev/null "$OUT"  true
+       SessionInfo.txt 2>/dev/null "$OUT" || true
 
-    mv exec_time_eval.txt cellManager.txt map_points.csv \
+    mv "$RENAME_EXEC_TIME_EVAL" cellManager.txt map_points.csv \
        f_dataset-${ds}_stereo_inertial.txt \
        kf_dataset-${ds}_stereo_inertial.txt \
-       2>/dev/null "$OUT"  true
+       2>/dev/null "$OUT" || true
 
     echo "Saved → $OUT"
     echo
