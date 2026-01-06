@@ -1,15 +1,12 @@
 #!/bin/bash
-set -e
 
-DATE=$(date +"%Y-%m-%d_%H-%M-%S")
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-DATASETS=(
-  MH01 MH02 MH03 MH04 MH05
-  V101 V102 V103
-  V201 V202 V203
-)
+DATE="$(date +"%Y-%m-%d_%H-%M-%S")"
 
-# Map dataset code to EuRoC folder name
+DATASETS=(MH01 MH02 MH03 MH04 MH05 V101 V102 V103 V201 V202 V203)
+
 dataset_dir() {
   case "$1" in
     MH01) echo "MH_01_easy" ;;
@@ -41,22 +38,24 @@ for ds in "${DATASETS[@]}"; do
       ./Examples/Stereo-Inertial/EuRoC_oasis.yaml \
       ./Datasets/EuRoc/$folder \
       ./Examples/Stereo-Inertial/EuRoC_TimeStamps/${ds}.txt \
-      dataset-${ds}_stereo_inertial
+      dataset-${ds}_stereoinertial
 
-    OUT="${DATE}_${ds}_run_${run}"
+    OUT="${DATE}${ds}run${run}"
     mkdir -p "$OUT"
 
     mv LocalMapTimeStats.txt TrackingTimeStats.txt LBA_Stats.txt ExecMean.txt \
-       SessionInfo.txt 2>/dev/null "$OUT" || true
+       SessionInfo.txt 2>/dev/null "$OUT"  true
 
     mv exec_time_eval.txt cellManager.txt map_points.csv \
        f_dataset-${ds}_stereo_inertial.txt \
        kf_dataset-${ds}_stereo_inertial.txt \
-       2>/dev/null "$OUT" || true
+       2>/dev/null "$OUT"  true
 
     echo "Saved → $OUT"
     echo
 
   done
 done
+
+echo "All done."
 

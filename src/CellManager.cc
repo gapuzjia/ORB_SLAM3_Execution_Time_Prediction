@@ -27,14 +27,17 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     bool skip = false;
 
     // check if we need to populate our pyramid with this level's info
-    if( pyramid_levels.size() < (cell.level+1) )
+    if (pyramid_levels.size() <= cell.level)
     {
-        pyramid_levels.push_back({cell.nRows, cell.nCols});
-        // Ensure cells_per_level has an entry for the new pyramid level.
-        // Store a unique_ptr to a newly-allocated atomic<int> so the vector
-        // only moves pointers (which are movable) and never the atomic objects.
-        while (cells_per_level.size() < pyramid_levels.size())
-            cells_per_level.emplace_back(std::make_unique<std::atomic<int>>(0));
+        pyramid_levels.resize(cell.level + 1);
+    }
+
+    if (cells_per_level.size() <= cell.level)
+    {
+        size_t old = cells_per_level.size();
+        cells_per_level.resize(cell.level + 1);
+        for (size_t i = old; i < cells_per_level.size(); i++)
+        cells_per_level[i] = std::make_unique<std::atomic<int>>(0);
     }
 
     // NOTE: Do NOT increment per-level counters here - we haven't decided
@@ -101,17 +104,19 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
 
     //execution time prediction-------------------------
     // Open the log file in truncate mode so each program run overwrites the file
-    static std::ofstream et_log("exec_time_eval.txt", std::ios::out | std::ios::trunc);
-    static bool header_written = false;
-    if(et_log && !header_written)
-    {
-        // Add mask width/height to the execution-time log
-        // Also append fixed per-pyramid-level columns L0..L7 for easier analysis
+    std::ofstream et_log("exec_time_eval.txt", std::ios::app);
+
+    if (!et_log.is_open()) {
+         std::cerr << "Error opening exec_time_eval.txt!" << std::endl;
+        return;
+    }
+
+    static std::atomic<bool> header_written(false);
+    if (!header_written.exchange(true)) {
         et_log << "frame,predicted_ms,actual_ms,avg_cells_per_frame,actual_cells,skipped,mask_w,mask_h";
         for (int l = 0; l < 8; ++l) et_log << ",L" << l;
         et_log << "\n";
-        header_written = true;
-    }
+    } 
 
     if(g_pending_pred_ms >= 0.0)
     {        
@@ -165,7 +170,11 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
 
     // compare largest pyramid level against elapsed cells
     // if almost double, we can assume that stereo is done
-    static bool stereo_slam = (elapsed_cells > (pyramid_levels[0].nRows * pyramid_levels[0].nCols) * 1.8);
+    bool stereo_slam = false;
+
+    if (!pyramid_levels.empty()) {
+        stereo_slam = (elapsed_cells > (pyramid_levels[0].nRows * pyramid_levels[0].nCols) * 1.8);
+    }
 
     // Using actual time elapsed to do frame as the budget for the next frame
     const double time_per_cell = ( actualFrameTime / getAverageCellsPerFrame());
