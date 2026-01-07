@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -u
 
 DATE="$(date +"%Y-%m-%d_%H-%M-%S")"
 
@@ -21,7 +21,7 @@ dataset_dir() {
   esac
 }
 
-NUM_RUNS=1
+NUM_RUNS=10
 
 for ds in "${DATASETS[@]}"; do
   folder=$(dataset_dir "$ds")
@@ -31,24 +31,31 @@ for ds in "${DATASETS[@]}"; do
     echo "=== Running $ds (folder $folder), run $run ==="
     echo "COMMAND = ./Examples/Stereo-Inertial/stereo_inertial_euroc ./Vocabulary/ORBvoc.txt ./Examples/Stereo-Inertial/EuRoC_oasis.yaml ./Datasets/EuRoc/$folder ./Examples/Stereo-Inertial/EuRoC_TimeStamps/${ds}.txt dataset-${ds}_stereo_inertial"
 
-    ./Examples/Stereo-Inertial/stereo_inertial_euroc \
+    if ! ./Examples/Stereo-Inertial/stereo_inertial_euroc \
       ./Vocabulary/ORBvoc.txt \
       ./Examples/Stereo-Inertial/EuRoC_oasis.yaml \
       ./Datasets/EuRoc/$folder \
       ./Examples/Stereo-Inertial/EuRoC_TimeStamps/${ds}.txt \
       dataset-${ds}_stereo_inertial
-
+    then
+	echo "CRASHED on dataset $ds run $run (continuing)"
+    fi
+    
     OUT="${DATE}${ds}run${run}"
     mkdir -p "$OUT"
     
     RENAME_EXEC_TIME_EVAL="exec_time_eval_${ds}run${run}.txt"
+    
+    if [ -f exec_time_eval.txt ]; then
+        cp exec_time_eval.txt "$RENAME_EXEC_TIME_EVAL"
+	mv -f "$RENAME_EXEC_TIME_EVAL" "$OUT/"
+    fi
 
-    mv exec_time_eval.txt "$RENAME_EXEC_TIME_EVAL"
 
     mv LocalMapTimeStats.txt TrackingTimeStats.txt LBA_Stats.txt ExecMean.txt \
        SessionInfo.txt 2>/dev/null "$OUT" || true
 
-    mv "$RENAME_EXEC_TIME_EVAL" cellManager.txt map_points.csv \
+    mv cellManager.txt map_points.csv \
        f_dataset-${ds}_stereo_inertial.txt \
        kf_dataset-${ds}_stereo_inertial.txt \
        2>/dev/null "$OUT" || true
