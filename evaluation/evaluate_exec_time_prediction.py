@@ -41,11 +41,13 @@ for folder in os.listdir(base_dir):
             df['predicted_ms'] / df['avg_cells_per_frame']).replace([np.inf, -np.inf], 0).fillna(0)
         df['residuals_squared'] = np.square(df['actual_tpc'] - df['pred_tpc'])
         rmse = np.sqrt(np.sum(df['residuals_squared']) / len(df))
-        skipped_cells = df['skipped'].sum()
+        skipped_frames = df['skipped'].sum()
+        avg_tpc_actual = df['actual_tpc'].mean()
+        avg_tpc_pred = df['pred_tpc'].mean()
 
         # ----- store results
         with open(results_file, 'a') as f:
-            f.write(f"{file}\t: {rmse}\t{skipped_cells}\n")
+            f.write(f"{file}\t: {rmse}\t{skipped_frames}\t {avg_tpc_actual}\t {avg_tpc_pred}\n")
 
         #----- print results
-        print(f"Processed {file} in {folder}, RMSE: {rmse}, Skipped Cells: {skipped_cells}")
+        print(f"Processed {file} in {folder}, RMSE: {rmse}, Skipped Frames: {skipped_frames}, Mean TPC act: {avg_tpc_actual}, Mean TPC pred:{avg_tpc_pred}")
