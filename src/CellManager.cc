@@ -32,6 +32,22 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
         pyramid_levels.resize(cell.level + 1);
     }
 
+    // Record THIS level's grid dimensions. Without this the vector is only ever
+    // resized, so every pyramid_level_t stays default-constructed at 0x0, and the
+    // mask search in endFrame() degenerates:
+    //     largest_mask = max(nRows, nCols) + 1 = 1
+    //     FOV_MASK     = largest_mask + 1      = 2      <- pinned 2x2 forever
+    //     for(mask = 2; mask < largest_mask; ...)       <- body never runs
+    // i.e. the FOV actuator can never size itself and the extractor is starved to
+    // ~102 of ~1352 cells on every frame. The authors' own committed cellManager.txt
+    // shows real dimensions (Level 0: 20x12, ...), so this is a regression relative
+    // to the run the paper's numbers came from, not intended behaviour.
+    //
+    // Left and right extractors run concurrently in stereo and write identical
+    // values here for a given level, so the store is idempotent.
+    pyramid_levels[cell.level].nRows = cell.nRows;
+    pyramid_levels[cell.level].nCols = cell.nCols;
+
     if (cells_per_level.size() <= cell.level)
     {
         size_t old = cells_per_level.size();
