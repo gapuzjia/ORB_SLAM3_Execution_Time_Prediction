@@ -22,6 +22,7 @@
 #include "CameraModels/KannalaBrandt8.h"
 
 #include "System.h"
+#include "CellManager.h"
 
 #include <opencv2/core/persistence.hpp>
 #include <opencv2/core/eigen.hpp>
@@ -499,6 +500,25 @@ namespace ORB_SLAM3 {
             cout << "Static mask size: " << maskHeight << "x" << maskWidth << endl;
         }
         
+        // Static masking patterns (checkerboard / stripes / random). Configured on the
+        // CellManager singleton directly rather than threaded through the ORBextractor
+        // constructor, because the decision is made inside CellManager::skipCell and
+        // the extractor already delegates there.
+        {
+            const int pat = readParameter<int>(fSettings,"System.maskPattern",found,false);
+            const int seed = readParameter<int>(fSettings,"System.maskRandomSeed",found,false);
+            int dens = readParameter<int>(fSettings,"System.maskDensityPct",found,false);
+            if(dens <= 0 || dens > 100) dens = 50;   // default: see spec section 4
+            CellManager::getInstance().configureMaskPattern(pat,seed,dens);
+            if(pat)
+            {
+                static const char* kNames[] = {"off","checkerboard","vstripes","hstripes","random"};
+                cout << "Static mask pattern: " << ((pat>=0 && pat<=4) ? kNames[pat] : "?")
+                     << (pat==4 ? (" (density " + std::to_string(dens) + "%, seed "
+                                   + std::to_string(seed) + ")") : std::string()) << endl;
+            }
+        }
+
         enableOasis = (bool)readParameter<int>(fSettings,"System.enableOasis",found,false);
         if(enableOasis)
         {

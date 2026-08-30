@@ -60,6 +60,29 @@ private:
         int height;
     };
 
+    // Static masking patterns, for the OASIS-vs-static comparison the paper describes
+    // (tex/03-evaluation.tex:271) but does not ship code for. The paper's fig:masks
+    // caption -- "Cells highlighted in green indicate cells to be processed for
+    // feature extraction" -- fixes the quantum as the extractor GRID CELL, the same
+    // one the adaptive FOV mask uses, applied per pyramid level so the active
+    // fraction is scale-invariant.
+    enum mask_pattern_t
+    {
+        MASK_PATTERN_OFF        = 0,
+        MASK_PATTERN_CHECKER    = 1,
+        MASK_PATTERN_VSTRIPES   = 2,
+        MASK_PATTERN_HSTRIPES   = 3,
+        MASK_PATTERN_RANDOM     = 4,
+    };
+    std::atomic<int>    maskPattern{ MASK_PATTERN_OFF };
+    std::atomic<int>    maskRandomSeed{ 0 };
+    // Active fraction for MASK_PATTERN_RANDOM. Default 0.5 because Random_Cell's
+    // dropped-frame and FPS behaviour in the paper's own static_masks.csv is
+    // statistically indistinguishable from checkerboard/vstripes/hstripes, which are
+    // 50% active by construction. That is a WEAK inference, not a recovered value --
+    // the shipped columns cannot discriminate density (spec section 4).
+    std::atomic<int>    maskDensityPct{ 50 };
+
     // an instance of the MASK struct we'll use!
     mask_t FOV_MASK;
 
@@ -72,6 +95,17 @@ public:
     // we'll use a singleton pattern so we can use this in multiple places 
     // (e.g. Frame, Tracking, etc.) while maintaining a single instance
     static CellManager& getInstance();
+
+    // Configure the static masking pattern. Set from the settings file before
+    // tracking starts. Pattern 0 leaves behaviour byte-identical to a build without
+    // this feature, which is what the off-equivalence check verifies.
+    void configureMaskPattern(int pattern, int seed, int densityPct)
+    {
+        maskPattern.store(pattern, std::memory_order_relaxed);
+        maskRandomSeed.store(seed, std::memory_order_relaxed);
+        maskDensityPct.store(densityPct, std::memory_order_relaxed);
+    }
+    int  getMaskPattern() const { return maskPattern.load(std::memory_order_relaxed); }
 
     // Increment the frame's elapsed cells
     void incrementCell();
