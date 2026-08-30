@@ -100,6 +100,11 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     // Only count this cell for the pyramid level if it is NOT skipped.
     if (!skip)
     {
+        // Under the lock. The pointed-to counter is atomic, but the VECTOR is not:
+        // reading .size() and indexing it while the other extractor thread is inside
+        // resize() reads a reallocated-and-freed buffer. Reproduced as a
+        // heap-use-after-free under AddressSanitizer.
+        std::lock_guard<std::mutex> lk(pyramid_mutex);
         if (cells_per_level.size() > static_cast<size_t>(cell.level) && cells_per_level[cell.level])
             (*cells_per_level[cell.level])++;
     }
@@ -144,12 +149,17 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
            << FOV_MASK.width << "," << FOV_MASK.height;
 
         // Append per-level cell counts (L0..L7). If fewer levels exist, pad with zeros.
-        for (int l = 0; l < 8; ++l)
+        // Locked like every other access: guarding some sites and reasoning that the
+        // rest "cannot" be concurrent is what left the use-after-free above.
         {
-            int val = 0;
-            if (l < static_cast<int>(cells_per_level.size()) && cells_per_level[l])
-                val = cells_per_level[l]->load();
-            et_log << "," << val;
+            std::lock_guard<std::mutex> lk(pyramid_mutex);
+            for (int l = 0; l < 8; ++l)
+            {
+                int val = 0;
+                if (l < static_cast<int>(cells_per_level.size()) && cells_per_level[l])
+                    val = cells_per_level[l]->load();
+                et_log << "," << val;
+            }
         }
 
         et_log << "\n";
@@ -304,9 +314,12 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     elapsed_cells = 0;
     
     // Reset the per-level counters for next frame
-    for (auto& level_count : cells_per_level)
     {
-        if (level_count) level_count->store(0);
+        std::lock_guard<std::mutex> lk(pyramid_mutex);
+        for (auto& level_count : cells_per_level)
+        {
+            if (level_count) level_count->store(0);
+        }
     }
 }
 
@@ -357,11 +370,14 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
 
     // Print cells processed per pyramid level
     file << " - Cells per pyramid level:\n";
-    for (size_t i = 0; i < cells_per_level.size(); i++)
     {
-        int val = 0;
-        if (cells_per_level[i]) val = cells_per_level[i]->load();
-        file << "   Level " << i << ": " << val << " cells\n";
+        std::lock_guard<std::mutex> lk(pyramid_mutex);
+        for (size_t i = 0; i < cells_per_level.size(); i++)
+        {
+            int val = 0;
+            if (cells_per_level[i]) val = cells_per_level[i]->load();
+            file << "   Level " << i << ": " << val << " cells\n";
+        }
     }
 }
 }
