@@ -28,7 +28,12 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
 
     // Register THIS level's grid dimensions. Lock-free: fixed-capacity atomic arrays,
     // so there is nothing to grow and nothing to serialise on the per-cell hot path.
-    if (cell.level < kMaxPyramidLevels)
+    // Explicit on BOTH ends. `cell.level` is int and kMaxPyramidLevels is size_t, so
+    // `cell.level < kMaxPyramidLevels` promotes the int to size_t and a negative
+    // level becomes SIZE_MAX -- correctly rejected, but only by accident of
+    // conversion, and the kind of implicit signed/unsigned comparison that changes
+    // meaning the moment a type does.
+    if (cell.level >= 0 && static_cast<size_t>(cell.level) < kMaxPyramidLevels)
     {
         level_rows[cell.level].store(cell.nRows, std::memory_order_relaxed);
         level_cols[cell.level].store(cell.nCols, std::memory_order_relaxed);
@@ -91,7 +96,7 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     // Only count this cell for the pyramid level if it is NOT skipped.
     if (!skip)
     {
-        if (cell.level < kMaxPyramidLevels)
+        if (cell.level >= 0 && static_cast<size_t>(cell.level) < kMaxPyramidLevels)
             cells_per_level[cell.level].fetch_add(1, std::memory_order_relaxed);
     }
 
