@@ -60,6 +60,48 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     // increment the per-level counter after the skip decision so the
     // mask can actually prevent cells from being counted.
 
+    // Static masking patterns. Evaluated BEFORE the adaptive FOV mask and independently
+    // of `enableOasis`: these are the comparison arms, so they must work with the
+    // adaptive controller off. A pattern is a pure function of (level, row, col) --
+    // no shared state, no RNG object -- so the two stereo extractor threads compute
+    // identical decisions without coordination, and a run is bit-reproducible.
+    const int pattern = maskPattern.load(std::memory_order_relaxed);
+    if( pattern != MASK_PATTERN_OFF )
+    {
+        switch( pattern )
+        {
+            case MASK_PATTERN_CHECKER:
+                skip = ((cell.row + cell.col) % 2) != 0;
+                break;
+            case MASK_PATTERN_VSTRIPES:
+                skip = (cell.col % 2) != 0;
+                break;
+            case MASK_PATTERN_HSTRIPES:
+                skip = (cell.row % 2) != 0;
+                break;
+            case MASK_PATTERN_RANDOM:
+            {
+                // Deterministic hash, NOT a random number generator. std::rand or a
+                // shared engine would give the two extractor threads different
+                // sequences and make consecutive runs differ -- the pattern has to be
+                // a stable property of the cell, exactly as the other three are.
+                // splitmix64 finalizer over the packed key.
+                uint64_t k = (static_cast<uint64_t>(maskRandomSeed.load(std::memory_order_relaxed)) << 40)
+                           ^ (static_cast<uint64_t>(cell.level) << 32)
+                           ^ (static_cast<uint64_t>(static_cast<uint32_t>(cell.row)) << 16)
+                           ^  static_cast<uint64_t>(static_cast<uint32_t>(cell.col));
+                k ^= k >> 30; k *= 0xbf58476d1ce4e5b9ULL;
+                k ^= k >> 27; k *= 0x94d049bb133111ebULL;
+                k ^= k >> 31;
+                const int pct = maskDensityPct.load(std::memory_order_relaxed);
+                skip = static_cast<int>(k % 100ULL) >= pct;   // keep `pct`% of cells
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
     // check if we're skipping this cell, based on current FOV mask
     if( enableOasis )
     {
