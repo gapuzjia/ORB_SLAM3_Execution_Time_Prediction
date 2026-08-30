@@ -27,26 +27,23 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     bool skip = false;
 
     // check if we need to populate our pyramid with this level's info
-    if (pyramid_levels.size() <= cell.level)
     {
-        pyramid_levels.resize(cell.level + 1);
+        std::lock_guard<std::mutex> lk(pyramid_mutex);
+        if (pyramid_levels.size() <= cell.level)
+        {
+            pyramid_levels.resize(cell.level + 1);
+        }
+        pyramid_levels[cell.level].nRows = cell.nRows;
+        pyramid_levels[cell.level].nCols = cell.nCols;
     }
 
-    // Record THIS level's grid dimensions. Without this the vector is only ever
-    // resized, so every pyramid_level_t stays default-constructed at 0x0, and the
-    // mask search in endFrame() degenerates:
-    //     largest_mask = max(nRows, nCols) + 1 = 1
-    //     FOV_MASK     = largest_mask + 1      = 2      <- pinned 2x2 forever
-    //     for(mask = 2; mask < largest_mask; ...)       <- body never runs
-    // i.e. the FOV actuator can never size itself and the extractor is starved to
-    // ~102 of ~1352 cells on every frame. The authors' own committed cellManager.txt
-    // shows real dimensions (Level 0: 20x12, ...), so this is a regression relative
-    // to the run the paper's numbers came from, not intended behaviour.
-    //
-    // Left and right extractors run concurrently in stereo and write identical
-    // values here for a given level, so the store is idempotent.
-    pyramid_levels[cell.level].nRows = cell.nRows;
-    pyramid_levels[cell.level].nCols = cell.nCols;
+    // Why the assignment above matters: without it the vector is only ever resized,
+    // so every pyramid_level_t stays default-constructed at 0x0 and the mask search
+    // in endFrame() degenerates -- largest_mask = max(0,0)+1 = 1, and the loop
+    // 'for(mask = 2; mask < largest_mask; ...)' never executes, so FOV_MASK is left
+    // at whatever endFrame last stored (2) and the extractor is starved to ~102 of
+    // ~1352 cells on every frame, on any hardware. The authors' own committed
+    // cellManager.txt shows real dimensions (Level 0: 20x12, ...).
 
     if (cells_per_level.size() <= cell.level)
     {
@@ -183,6 +180,7 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     bool stereo_slam = false;
 
     if (!pyramid_levels.empty()) {
+        std::lock_guard<std::mutex> lk(pyramid_mutex);   // see pyramid_mutex in the header
         stereo_slam = (elapsed_cells > (pyramid_levels[0].nRows * pyramid_levels[0].nCols) * 1.8);
     }
 
@@ -235,7 +233,15 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
         std::cout << "No pyramid levels found, can't set FOV_MASK" << std::endl;
         return;
     }
-    const int largest_mask = std::max(pyramid_levels[0].nRows, pyramid_levels[0].nCols) + 1;
+    // Take a snapshot under the lock rather than reading the live vector across the
+    // whole mask search: skipCell() can resize it concurrently from the other
+    // extractor thread, which would invalidate references mid-loop.
+    std::vector<pyramid_level_t> levels;
+    {
+        std::lock_guard<std::mutex> lk(pyramid_mutex);
+        levels = pyramid_levels;
+    }
+    const int largest_mask = std::max(levels[0].nRows, levels[0].nCols) + 1;
     FOV_MASK.height = largest_mask + 1;
     FOV_MASK.width = largest_mask + 1;
 
@@ -247,9 +253,9 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
         int cells_in_mask = 0;
         // Go through each pyramid level and calculate the number of cells
         // that would be covered by the mask
-        for( int level = 0; level < pyramid_levels.size(); level++ )
+        for( int level = 0; level < levels.size(); level++ )
         {
-            const int cells_at_level = pyramid_levels[level].nRows * pyramid_levels[level].nCols;
+            const int cells_at_level = levels[level].nRows * levels[level].nCols;
             if( cells_at_level < (maskWidth * maskHeight) )
             {
                 cells_in_mask += cells_at_level;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <mutex>
 #include <vector>
 #include <memory>
 #include <chrono>
@@ -66,6 +67,11 @@ private:
     // These are the variables we need in order to figure out
     // how much time we have to provision to featurizing the frame
     std::vector<pyramid_level_t> pyramid_levels;
+    // Guards pyramid_levels. The left and right ORBextractor instances call
+    // skipCell() concurrently in stereo, and skipCell() RESIZES this vector --
+    // concurrent resize() is undefined behaviour and can corrupt it outright.
+    // That race predates the dimension-registration fix; the mutex closes both.
+    mutable std::mutex pyramid_mutex;
 
 public:
 
