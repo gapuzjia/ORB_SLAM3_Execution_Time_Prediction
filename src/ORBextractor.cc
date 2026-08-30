@@ -864,8 +864,13 @@ namespace ORB_SLAM3
                     if(maxX>maxBorderX)
                         maxX = maxBorderX;
 
-                    // if we're using OASIS, we need to check if we should skip this cell
-                    if( enableOasis )
+                    // Call into CellManager when EITHER the adaptive controller is on
+                    // OR a static masking pattern is selected. Gating on `enableOasis`
+                    // alone made every static pattern dead code: pattern configs set
+                    // System.maskPattern but deliberately NOT System.enableOasis, so
+                    // skipCell was never reached and the mask never applied -- while the
+                    // run still completed and printed the pattern name at startup.
+                    if( enableOasis || CellManager::getInstance().maskPatternActive() )
                     {
 
                         // We can create a temporary for the current settings

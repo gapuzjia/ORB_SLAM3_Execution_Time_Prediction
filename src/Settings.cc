@@ -520,6 +520,7 @@ namespace ORB_SLAM3 {
         }
 
         enableOasis = (bool)readParameter<int>(fSettings,"System.enableOasis",found,false);
+        CellManager::getInstance().setOasisRequested(enableOasis);
         if(enableOasis)
         {
             cout << "OASIS enabled" << endl;

@@ -102,8 +102,12 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
         }
     }
 
-    // check if we're skipping this cell, based on current FOV mask
-    if( enableOasis )
+    // The adaptive FOV mask applies only when the OASIS controller was REQUESTED and
+    // has warmed up. `enableOasis` alone means only "warmed up" -- it is set
+    // unconditionally at the end of the first endFrame -- so gating on it alone would
+    // silently layer the adaptive mask on top of a static pattern from frame 2
+    // onwards and corrupt the comparison the patterns exist to make.
+    if( enableOasis && oasisRequested.load(std::memory_order_relaxed) )
     {
         const int maskWidth = FOV_MASK.width;
         const int maskHeight = FOV_MASK.height;

@@ -111,6 +111,19 @@ public:
     // Configure the static masking pattern. Set from the settings file before
     // tracking starts. Pattern 0 leaves behaviour byte-identical to a build without
     // this feature, which is what the off-equivalence check verifies.
+    // Whether the ADAPTIVE OASIS controller was requested in the settings file, as
+    // distinct from `enableOasis` below, which means "the controller has warmed up".
+    // Conflating the two is what made the static patterns dead code: the extractor
+    // gated its skipCell call on the settings flag, so a pattern-only run never
+    // reached CellManager at all.
+    std::atomic<bool> oasisRequested{ false };
+    void setOasisRequested(bool v) { oasisRequested.store(v, std::memory_order_relaxed); }
+
+    // True when a static masking pattern is selected. The extractor consults this so
+    // it calls skipCell for pattern-only runs, which do NOT set System.enableOasis.
+    bool maskPatternActive() const
+    { return maskPattern.load(std::memory_order_relaxed) != MASK_PATTERN_OFF; }
+
     void configureMaskPattern(int pattern, int seed, int densityPct)
     {
         maskPattern.store(pattern, std::memory_order_relaxed);
