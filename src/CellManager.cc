@@ -26,15 +26,17 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
 {
     bool skip = false;
 
-    // check if we need to populate our pyramid with this level's info
+    // Register THIS level's grid dimensions. Lock-free: fixed-capacity atomic arrays,
+    // so there is nothing to grow and nothing to serialise on the per-cell hot path.
+    if (cell.level < kMaxPyramidLevels)
     {
-        std::lock_guard<std::mutex> lk(pyramid_mutex);
-        if (pyramid_levels.size() <= cell.level)
-        {
-            pyramid_levels.resize(cell.level + 1);
-        }
-        pyramid_levels[cell.level].nRows = cell.nRows;
-        pyramid_levels[cell.level].nCols = cell.nCols;
+        level_rows[cell.level].store(cell.nRows, std::memory_order_relaxed);
+        level_cols[cell.level].store(cell.nCols, std::memory_order_relaxed);
+        int prev = max_level_seen.load(std::memory_order_relaxed);
+        while (static_cast<int>(cell.level) > prev &&
+               !max_level_seen.compare_exchange_weak(prev, static_cast<int>(cell.level),
+                                                     std::memory_order_relaxed))
+        { /* prev is reloaded by compare_exchange_weak */ }
     }
 
     // Why the assignment above matters: without it the vector is only ever resized,
@@ -45,18 +47,7 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     // ~1352 cells on every frame, on any hardware. The authors' own committed
     // cellManager.txt shows real dimensions (Level 0: 20x12, ...).
 
-    {
-        // Same hazard as pyramid_levels: this vector is resized from BOTH extractor
-        // threads. Guarding only its sibling left the identical UB here.
-        std::lock_guard<std::mutex> lk(pyramid_mutex);
-        if (cells_per_level.size() <= cell.level)
-        {
-            size_t old = cells_per_level.size();
-            cells_per_level.resize(cell.level + 1);
-            for (size_t i = old; i < cells_per_level.size(); i++)
-                cells_per_level[i] = std::make_unique<std::atomic<int>>(0);
-        }
-    }
+    // cells_per_level needs no lazy initialisation: it is a zero-initialised array.
 
     // NOTE: Do NOT increment per-level counters here - we haven't decided
     // whether the cell will be skipped yet. The FOV mask and skip_frames
@@ -100,13 +91,8 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     // Only count this cell for the pyramid level if it is NOT skipped.
     if (!skip)
     {
-        // Under the lock. The pointed-to counter is atomic, but the VECTOR is not:
-        // reading .size() and indexing it while the other extractor thread is inside
-        // resize() reads a reallocated-and-freed buffer. Reproduced as a
-        // heap-use-after-free under AddressSanitizer.
-        std::lock_guard<std::mutex> lk(pyramid_mutex);
-        if (cells_per_level.size() > static_cast<size_t>(cell.level) && cells_per_level[cell.level])
-            (*cells_per_level[cell.level])++;
+        if (cell.level < kMaxPyramidLevels)
+            cells_per_level[cell.level].fetch_add(1, std::memory_order_relaxed);
     }
 
     return skip;
@@ -149,18 +135,9 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
            << FOV_MASK.width << "," << FOV_MASK.height;
 
         // Append per-level cell counts (L0..L7). If fewer levels exist, pad with zeros.
-        // Locked like every other access: guarding some sites and reasoning that the
-        // rest "cannot" be concurrent is what left the use-after-free above.
-        {
-            std::lock_guard<std::mutex> lk(pyramid_mutex);
-            for (int l = 0; l < 8; ++l)
-            {
-                int val = 0;
-                if (l < static_cast<int>(cells_per_level.size()) && cells_per_level[l])
-                    val = cells_per_level[l]->load();
-                et_log << "," << val;
-            }
-        }
+        for (int l = 0; l < 8; ++l)
+            et_log << "," << (static_cast<size_t>(l) < kMaxPyramidLevels
+                              ? cells_per_level[l].load(std::memory_order_relaxed) : 0);
 
         et_log << "\n";
         et_log.flush();
@@ -194,17 +171,10 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     // if almost double, we can assume that stereo is done
     bool stereo_slam = false;
 
-    // Lock FIRST, then test. Evaluating .empty() on the live vector before taking
-    // the lock is itself the race: skipCell() can be inside its own resize() on the
-    // other extractor thread while this reads size/data pointers.
-    bool have_levels = false;
-    {
-        std::lock_guard<std::mutex> lk(pyramid_mutex);
-        have_levels = !pyramid_levels.empty();
-        if (have_levels)
-            stereo_slam = (elapsed_cells > (pyramid_levels[0].nRows * pyramid_levels[0].nCols) * 1.8);
-    }
-    if (have_levels) {
+    const int top_level = max_level_seen.load(std::memory_order_relaxed);
+    if (top_level >= 0) {
+        stereo_slam = (elapsed_cells > (level_rows[0].load(std::memory_order_relaxed)
+                                      * level_cols[0].load(std::memory_order_relaxed)) * 1.8);
     }
 
     // Using actual time elapsed to do frame as the budget for the next frame
@@ -250,14 +220,14 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     // of cells the proposed mask will cover, and compare that against
     // the frame budget, to determine if the mask should become FOV_MASK
     // starting with a 2x2 mask, and increasing in size, until budget is exceeded
-    // Snapshot under the lock, THEN test the snapshot. Testing pyramid_levels.size()
-    // on the live vector before locking is the same unlocked read this snapshot
-    // exists to avoid. skipCell() can resize it concurrently from the other
-    // extractor thread, which would also invalidate references mid-loop.
+    // Snapshot the atomic arrays into a plain local, so the mask search below sees a
+    // stable view even if extraction for the next frame has already begun.
     std::vector<pyramid_level_t> levels;
     {
-        std::lock_guard<std::mutex> lk(pyramid_mutex);
-        levels = pyramid_levels;
+        const int top = max_level_seen.load(std::memory_order_relaxed);
+        for (int i = 0; i <= top && static_cast<size_t>(i) < kMaxPyramidLevels; ++i)
+            levels.push_back(pyramid_level_t{ level_rows[i].load(std::memory_order_relaxed),
+                                              level_cols[i].load(std::memory_order_relaxed) });
     }
     if(levels.size() < 1)
     {
@@ -314,13 +284,8 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     elapsed_cells = 0;
     
     // Reset the per-level counters for next frame
-    {
-        std::lock_guard<std::mutex> lk(pyramid_mutex);
-        for (auto& level_count : cells_per_level)
-        {
-            if (level_count) level_count->store(0);
-        }
-    }
+    for (auto& level_count : cells_per_level)
+        level_count.store(0, std::memory_order_relaxed);
 }
 
 // Calculate average Cells per frame
@@ -347,11 +312,14 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
     if (once)
     {
         file << " - Pyramid Level Cells: \n";
-        for (size_t i = 0; i < pyramid_levels.size(); i++)
         {
-            file << "   - Level " << i << ": " 
-                 << pyramid_levels[i].nCols << "x" 
-                 << pyramid_levels[i].nRows << "\n";
+            const int top = max_level_seen.load(std::memory_order_relaxed);
+            for (int i = 0; i <= top && static_cast<size_t>(i) < kMaxPyramidLevels; i++)
+            {
+                file << "   - Level " << i << ": "
+                     << level_cols[i].load(std::memory_order_relaxed) << "x"
+                     << level_rows[i].load(std::memory_order_relaxed) << "\n";
+            }
         }
 
         // Print out if oasis enabled
@@ -371,13 +339,10 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
     // Print cells processed per pyramid level
     file << " - Cells per pyramid level:\n";
     {
-        std::lock_guard<std::mutex> lk(pyramid_mutex);
-        for (size_t i = 0; i < cells_per_level.size(); i++)
-        {
-            int val = 0;
-            if (cells_per_level[i]) val = cells_per_level[i]->load();
-            file << "   Level " << i << ": " << val << " cells\n";
-        }
+        const int top = max_level_seen.load(std::memory_order_relaxed);
+        for (int i = 0; i <= top && static_cast<size_t>(i) < kMaxPyramidLevels; i++)
+            file << "   Level " << i << ": "
+                 << cells_per_level[i].load(std::memory_order_relaxed) << " cells\n";
     }
 }
 }

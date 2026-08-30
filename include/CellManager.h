@@ -1,7 +1,7 @@
 #pragma once
 
+#include <array>
 #include <atomic>
-#include <mutex>
 #include <vector>
 #include <memory>
 #include <chrono>
@@ -40,10 +40,16 @@ class CellManager
 private:
     std::atomic<int> elapsed_cells;
     std::vector<int> cells_per_frame;
-    // Use unique_ptr to atomic<int> so the vector stores movable pointers instead
-    // of non-copyable/non-movable atomic<int> objects. This avoids vector
-    // reallocation/move problems while preserving atomic operations.
-    std::vector<std::unique_ptr<std::atomic<int>>> cells_per_level;  // Tracks cells processed at each pyramid level
+    // Fixed-capacity atomic arrays, NOT vectors. skipCell() runs on the per-cell hot
+    // path from both stereo extractor threads (~2700 calls/frame). A vector must be
+    // resized to grow, concurrent resize() is undefined behaviour, and serialising
+    // that with a mutex measurably perturbs the very quantity this instrumentation
+    // exists to measure -- ~0.74 ms/frame, 3-5% of t_track, added to one arm only.
+    // A fixed array indexed by level needs neither growth nor locking.
+    // ORB-SLAM3 uses 8 pyramid levels; the capacity carries headroom and levels
+    // beyond it are ignored rather than allowed to write out of bounds.
+    static constexpr size_t kMaxPyramidLevels = 16;
+    std::array<std::atomic<int>, kMaxPyramidLevels> cells_per_level{};  // cells processed per level
     std::atomic<int> frame_budget;
     std::atomic<bool> enableOasis = false;
     std::atomic<int> skip_frames = 0;
@@ -64,14 +70,14 @@ private:
     // an instance of the MASK struct we'll use!
     mask_t FOV_MASK;
 
-    // These are the variables we need in order to figure out
-    // how much time we have to provision to featurizing the frame
-    std::vector<pyramid_level_t> pyramid_levels;
-    // Guards pyramid_levels. The left and right ORBextractor instances call
-    // skipCell() concurrently in stereo, and skipCell() RESIZES this vector --
-    // concurrent resize() is undefined behaviour and can corrupt it outright.
-    // That race predates the dimension-registration fix; the mutex closes both.
-    mutable std::mutex pyramid_mutex;
+    // Grid dimensions per pyramid level, registered by skipCell(). Same rationale as
+    // cells_per_level: fixed capacity, atomic, no locking on the hot path. Both
+    // extractor threads write identical values for a given level, so relaxed stores
+    // are sufficient -- there is no ordering dependency between them.
+    std::array<std::atomic<int>, kMaxPyramidLevels> level_rows{};
+    std::array<std::atomic<int>, kMaxPyramidLevels> level_cols{};
+    // Highest level index seen, so readers know how much of the arrays is live.
+    std::atomic<int> max_level_seen{-1};
 
 public:
 
