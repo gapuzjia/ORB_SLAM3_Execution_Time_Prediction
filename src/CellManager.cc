@@ -362,6 +362,10 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
     static bool once = true;
     if (once)
     {
+        file << " - maskPattern=" << maskPattern.load(std::memory_order_relaxed)
+             << " densityPct=" << maskDensityPct.load(std::memory_order_relaxed)
+             << " oasisRequested=" << (oasisRequested.load(std::memory_order_relaxed) ? 1 : 0)
+             << "\n";
         file << " - Pyramid Level Cells: \n";
         {
             const int top = max_level_seen.load(std::memory_order_relaxed);
