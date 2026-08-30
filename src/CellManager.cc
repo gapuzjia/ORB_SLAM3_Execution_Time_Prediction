@@ -377,8 +377,15 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
             }
         }
 
-        // Print out if oasis enabled
-        file << (enableOasis ? " - Oasis Enabled" : " - Oasis Disabled") << std::endl;
+        // Print out if oasis enabled.
+        // BOTH flags, because `enableOasis` alone is the internal warmed-up latch that
+        // endFrame sets true after frame 1 on EVERY run, masked or not -- so this line
+        // printed "Oasis Enabled" on all four static-mask runs, directly above its own
+        // `oasisRequested=0`. The adaptive FOV mask is gated on the conjunction
+        // (see skipCell), so the label must be too, or a human sanity-checking a
+        // pattern run is told OASIS was active when it was not.
+        file << ((enableOasis && oasisRequested.load(std::memory_order_relaxed))
+                 ? " - Oasis Enabled" : " - Oasis Disabled") << std::endl;
         once = false;
     }
 
