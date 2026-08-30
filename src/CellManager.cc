@@ -45,12 +45,17 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     // ~1352 cells on every frame, on any hardware. The authors' own committed
     // cellManager.txt shows real dimensions (Level 0: 20x12, ...).
 
-    if (cells_per_level.size() <= cell.level)
     {
-        size_t old = cells_per_level.size();
-        cells_per_level.resize(cell.level + 1);
-        for (size_t i = old; i < cells_per_level.size(); i++)
-        cells_per_level[i] = std::make_unique<std::atomic<int>>(0);
+        // Same hazard as pyramid_levels: this vector is resized from BOTH extractor
+        // threads. Guarding only its sibling left the identical UB here.
+        std::lock_guard<std::mutex> lk(pyramid_mutex);
+        if (cells_per_level.size() <= cell.level)
+        {
+            size_t old = cells_per_level.size();
+            cells_per_level.resize(cell.level + 1);
+            for (size_t i = old; i < cells_per_level.size(); i++)
+                cells_per_level[i] = std::make_unique<std::atomic<int>>(0);
+        }
     }
 
     // NOTE: Do NOT increment per-level counters here - we haven't decided
@@ -179,9 +184,17 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     // if almost double, we can assume that stereo is done
     bool stereo_slam = false;
 
-    if (!pyramid_levels.empty()) {
-        std::lock_guard<std::mutex> lk(pyramid_mutex);   // see pyramid_mutex in the header
-        stereo_slam = (elapsed_cells > (pyramid_levels[0].nRows * pyramid_levels[0].nCols) * 1.8);
+    // Lock FIRST, then test. Evaluating .empty() on the live vector before taking
+    // the lock is itself the race: skipCell() can be inside its own resize() on the
+    // other extractor thread while this reads size/data pointers.
+    bool have_levels = false;
+    {
+        std::lock_guard<std::mutex> lk(pyramid_mutex);
+        have_levels = !pyramid_levels.empty();
+        if (have_levels)
+            stereo_slam = (elapsed_cells > (pyramid_levels[0].nRows * pyramid_levels[0].nCols) * 1.8);
+    }
+    if (have_levels) {
     }
 
     // Using actual time elapsed to do frame as the budget for the next frame
@@ -227,19 +240,20 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     // of cells the proposed mask will cover, and compare that against
     // the frame budget, to determine if the mask should become FOV_MASK
     // starting with a 2x2 mask, and increasing in size, until budget is exceeded
-    if(pyramid_levels.size() < 1)
-    {
-        // we don't have any pyramid levels, so we can't set the FOV_MASK
-        std::cout << "No pyramid levels found, can't set FOV_MASK" << std::endl;
-        return;
-    }
-    // Take a snapshot under the lock rather than reading the live vector across the
-    // whole mask search: skipCell() can resize it concurrently from the other
-    // extractor thread, which would invalidate references mid-loop.
+    // Snapshot under the lock, THEN test the snapshot. Testing pyramid_levels.size()
+    // on the live vector before locking is the same unlocked read this snapshot
+    // exists to avoid. skipCell() can resize it concurrently from the other
+    // extractor thread, which would also invalidate references mid-loop.
     std::vector<pyramid_level_t> levels;
     {
         std::lock_guard<std::mutex> lk(pyramid_mutex);
         levels = pyramid_levels;
+    }
+    if(levels.size() < 1)
+    {
+        // we don't have any pyramid levels, so we can't set the FOV_MASK
+        std::cout << "No pyramid levels found, can't set FOV_MASK" << std::endl;
+        return;
     }
     const int largest_mask = std::max(levels[0].nRows, levels[0].nCols) + 1;
     FOV_MASK.height = largest_mask + 1;
