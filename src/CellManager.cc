@@ -68,16 +68,41 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     const int pattern = maskPattern.load(std::memory_order_relaxed);
     if( pattern != MASK_PATTERN_OFF )
     {
+        // THE FIELDS ARE TRANSPOSED UPSTREAM. ORBextractor::ComputeKeyPointsOctTree
+        // builds the cell as `{.col=i, .row=j}` where `i` is the ROW loop index (it
+        // drives iniY, the vertical coordinate) and `j` is the COLUMN loop index (it
+        // drives iniX). So `cell.col` holds a row number and `cell.row` holds a column
+        // number -- the names mean the opposite of what they say. Present since
+        // 8862ba1, i.e. this is the artifact's own wiring, not something introduced
+        // here.
+        //
+        // Reading through the transposition HERE rather than fixing it at the source
+        // is deliberate: the FOV block below indexes the same two fields, and the
+        // paper's own published numbers were produced with that geometry. Correcting
+        // ORBextractor would silently move the FOV window and invalidate every Phase 1
+        // result already collected. Renaming locally is behaviour-preserving for
+        // everything except the two stripe patterns, which is precisely what needs to
+        // change.
+        //
+        // Left uncorrected, EuRoC_mask_vstripes.yaml produced horizontal stripes and
+        // EuRoC_mask_hstripes.yaml produced vertical ones, so both columns would have
+        // been published against the wrong row of tab:rpi-pose-error.
+        const int true_row = cell.col;   // i: vertical index,   0 .. nRows-1
+        const int true_col = cell.row;   // j: horizontal index, 0 .. nCols-1
+
         switch( pattern )
         {
             case MASK_PATTERN_CHECKER:
-                skip = ((cell.row + cell.col) % 2) != 0;
+                // Symmetric under the transposition, so this one was always correct.
+                skip = ((true_row + true_col) % 2) != 0;
                 break;
             case MASK_PATTERN_VSTRIPES:
-                skip = (cell.col % 2) != 0;
+                // Vertical stripes = alternating COLUMNS masked.
+                skip = (true_col % 2) != 0;
                 break;
             case MASK_PATTERN_HSTRIPES:
-                skip = (cell.row % 2) != 0;
+                // Horizontal stripes = alternating ROWS masked.
+                skip = (true_row % 2) != 0;
                 break;
             case MASK_PATTERN_RANDOM:
             {
@@ -88,8 +113,8 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
                 // splitmix64 finalizer over the packed key.
                 uint64_t k = (static_cast<uint64_t>(maskRandomSeed.load(std::memory_order_relaxed)) << 40)
                            ^ (static_cast<uint64_t>(cell.level) << 32)
-                           ^ (static_cast<uint64_t>(static_cast<uint32_t>(cell.row)) << 16)
-                           ^  static_cast<uint64_t>(static_cast<uint32_t>(cell.col));
+                           ^ (static_cast<uint64_t>(static_cast<uint32_t>(true_row)) << 16)
+                           ^  static_cast<uint64_t>(static_cast<uint32_t>(true_col));
                 k ^= k >> 30; k *= 0xbf58476d1ce4e5b9ULL;
                 k ^= k >> 27; k *= 0x94d049bb133111ebULL;
                 k ^= k >> 31;
