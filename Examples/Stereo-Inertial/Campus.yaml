@@ -1,0 +1,109 @@
+%YAML:1.0
+File.version: "1.0"
+
+# Kimera-Multi campus_outdoor_1014 (RealSense D455 infra pair), for the OASIS extension.
+#
+# DERIVED, not hand-copied, from the dataset's own calibration:
+#   /opt/backup/datasets-all/kimera-multi-data/calibration/{Left,Right}CameraParams.yaml
+#   and ImuParams.yaml -- byte-identical to upstream kimera_multi params/D455/, i.e. the
+#   calibration is shared BY SENSOR MODEL rather than per robot, so it applies to both
+#   acl_jackal and sparkal2.
+#
+# Stereo.T_c1_c2 = inv(T_BS_left) @ T_BS_right, giving a 94.94 mm baseline -- the D455's
+# nominal ~95 mm, which is the cross-check that the extrinsic composition is the right way
+# round rather than its inverse.
+#
+# DISTORTION IS ZERO ON PURPOSE. The source topics are
+# /<robot>/forward/infra{1,2}/image_rect_raw -- already RECTIFIED. The radtan
+# coefficients in the Kimera file describe the RAW stream; applying them again to
+# rectified images would distort twice. They are recorded here for the record:
+#   left  k1,k2,p1,p2 = -0.004399, -0.004677, 0.000174, 0.003242
+#   right k1,k2,p1,p2 = -0.003355, -0.005554, 0.000649, 0.002722
+# and all four are < 0.005, consistent with a factory-rectified IR pair.
+
+Camera.type: "PinHole"
+
+Camera1.fx: 377.229221
+Camera1.fy: 377.486566
+Camera1.cx: 326.351865
+Camera1.cy: 239.659665
+Camera1.k1: 0.0
+Camera1.k2: 0.0
+Camera1.p1: 0.0
+Camera1.p2: 0.0
+
+Camera2.fx: 377.535257
+Camera2.fy: 377.209841
+Camera2.cx: 328.193371
+Camera2.cy: 240.426879
+Camera2.k1: 0.0
+Camera2.k2: 0.0
+Camera2.p1: 0.0
+Camera2.p2: 0.0
+
+Camera.width: 640
+Camera.height: 480
+
+# MEASURED from the ASL timestamps (34693 frames over 1158.5 s), NOT the calibration
+# file's `rate_hz: 20`, which disagrees with the data it describes.
+Camera.fps: 30
+Camera.RGB: 1
+
+Stereo.ThDepth: 60.0
+Stereo.T_c1_c2: !!opencv-matrix
+  rows: 4
+  cols: 4
+  dt: f
+  data: [0.999992360616, 0.000177498946, 0.003904439968, 0.094939514029,
+         -0.000185184183, 0.999998050782, 0.001967121021, 0.000185731029,
+         -0.003904081984, -0.001967824212, 0.999990442601, 0.000688845106,
+         0.000000000000, 0.000000000000, 0.000000000000, 1.000000000000]
+
+IMU.T_b_c1: !!opencv-matrix
+  rows: 4
+  cols: 4
+  dt: f
+  data: [0.999859450000, -0.014437210000, 0.008523190000, -0.026474080000,
+         0.014537760000, 0.999824040000, -0.011854940000, 0.009148980000,
+         -0.008350540000, 0.011977180000, 0.999893400000, 0.025756170000,
+         0.000000000000, 0.000000000000, 0.000000000000, 1.000000000000]
+
+# From ImuParams.yaml. Kimera and ORB-SLAM3 use the same continuous-time units
+# (rad/s/sqrt(Hz), m/s^2/sqrt(Hz), and the walks per sqrt(Hz)), so these transfer directly.
+IMU.NoiseGyro: 0.04
+IMU.NoiseAcc: 0.04
+IMU.GyroWalk: 0.00266
+IMU.AccWalk: 0.00433
+# MEASURED: 464363 rows over 1159.4 s. ImuParams says 400 too, and here they agree.
+IMU.Frequency: 400.0
+
+ORBextractor.nFeatures: 1200
+
+# ORB Extractor: Scale factor between levels in the scale pyramid 	
+ORBextractor.scaleFactor: 1.2
+
+# ORB Extractor: Number of levels in the scale pyramid	
+ORBextractor.nLevels: 8
+
+# ORB Extractor: Fast threshold
+# Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
+# Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
+# You can lower these values if your images have low contrast			
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
+Viewer.imageViewScale: 1.0
+
