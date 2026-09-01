@@ -64,7 +64,14 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
     // of `enableOasis`: these are the comparison arms, so they must work with the
     // adaptive controller off. A pattern is a pure function of (level, row, col) --
     // no shared state, no RNG object -- so the two stereo extractor threads compute
-    // identical decisions without coordination, and a run is bit-reproducible.
+    // identical decisions without coordination.
+    //
+    // NOT "a run is bit-reproducible", which this comment used to claim. The MASK is
+    // reproducible -- the same cell yields the same decision every time, which is the
+    // property that matters here -- but a RUN is not: the extractor threads race
+    // elsewhere, and two runs of the same binary on the same input produce different
+    // trajectory bytes (measured: up to 3.9% apart; `cmp` of two MH01 runs exits 1).
+    // Conflating the two is what produced three rounds of false off-equivalence claims.
     const int pattern = maskPattern.load(std::memory_order_relaxed);
     if( pattern != MASK_PATTERN_OFF )
     {
