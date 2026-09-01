@@ -179,12 +179,32 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
 {
 
     // if we're skipping frames, note it and decrement the number of frames we need to skip
+    //
+    // GATED ON oasisRequested. skip_frames is the ADAPTIVE actuator's state: the budget
+    // code below sets it from how far over budget a frame ran, and skipCell consumes it
+    // only under (enableOasis && oasisRequested). endFrame, however, runs on EVERY frame
+    // of EVERY run -- so on a static-mask run, where nothing ever acts on skip_frames,
+    // this still decremented it, printed "Skipped/Dropped frame", and wrote skipped=1
+    // into exec_time_eval.txt for frames that were fully processed.
+    //
+    // That column is the dropped-frame metric the paper reports, so a static-mask run
+    // would have published fabricated drops. Observed transition before the fix:
+    //   frame=1 actual=151ms skipped=0 -> next_skip_frames=2
+    //   frame=2 actual=40ms  skipped=1 (but the frame WAS processed)
+    //   frame=3 actual=40ms  skipped=1 (likewise)
+    const bool oasis_active = enableOasis && oasisRequested.load(std::memory_order_relaxed);
     bool was_skipped = false;
-    if( skip_frames )
+    if( oasis_active && skip_frames )
     {
         std::cout << "Skipped/Dropped frame " << frame_num << std::endl;
         was_skipped = true;
         skip_frames--;
+    }
+    else if( !oasis_active )
+    {
+        // Keep the actuator inert rather than merely unread, so no later frame inherits
+        // a nonzero count and the budget path below cannot branch on stale state.
+        skip_frames = 0;
     }
 
     //execution time prediction-------------------------
