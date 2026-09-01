@@ -18,6 +18,7 @@
 
 
 #include "Tracking.h"
+#include "CellManager.h"
 
 #include "ORBmatcher.h"
 #include "FrameDrawer.h"
@@ -1345,6 +1346,31 @@ bool Tracking::ParseORBParamFile(cv::FileStorage &fSettings)
     {
         maskWidth = node.operator int();
     }
+    // Configure the CellManager singleton on the LEGACY path too.
+    // Settings.cc -- the File.version "1.0" reader -- calls setOasisRequested() and
+    // configureMaskPattern(). This older parser read System.enableOasis and handed it to
+    // the extractor but never told CellManager, so on this path `oasisRequested` stayed
+    // FALSE while the extractor believed OASIS was on. The adaptive FOV block is gated on
+    // `enableOasis && oasisRequested`, so it would never have run. The static mask keys
+    // were not read here at all, so System.maskPattern silently did nothing.
+    //
+    // Every config shipped in this repo declares File.version "1.0" and therefore goes
+    // through Settings.cc, which is why this never touched a measurement. It is still a
+    // wrong read site: leaving one configuration path that silently disagrees with the
+    // other is how a future config acquires the wrong behaviour with no error at all.
+    {
+        CellManager::getInstance().setOasisRequested(bEnableOasis);
+        int pat = 0, seed = 0, dens = 50;
+        node = fSettings["System.maskPattern"];
+        if(!node.empty() && node.isInt()) pat = node.operator int();
+        node = fSettings["System.maskRandomSeed"];
+        if(!node.empty() && node.isInt()) seed = node.operator int();
+        node = fSettings["System.maskDensityPct"];
+        if(!node.empty() && node.isInt()) dens = node.operator int();
+        if(dens <= 0 || dens > 100) dens = 50;
+        CellManager::getInstance().configureMaskPattern(pat,seed,dens);
+    }
+
     mpORBextractorLeft = new ORBextractor(nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST,bEnableFOV,maskHeight,maskWidth,bEnableOasis);
 
     if(mSensor==System::STEREO || mSensor==System::IMU_STEREO)
