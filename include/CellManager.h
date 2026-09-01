@@ -109,8 +109,21 @@ public:
     static CellManager& getInstance();
 
     // Configure the static masking pattern. Set from the settings file before
-    // tracking starts. Pattern 0 leaves behaviour byte-identical to a build without
-    // this feature, which is what the off-equivalence check verifies.
+    // tracking starts.
+    //
+    // Pattern 0 leaves the masking DECISIONS unchanged from a build without this
+    // feature -- NOT byte-identical behaviour, which this comment previously claimed and
+    // which is not true in two ways. First, the extractor gate became
+    // `enableOasis || CellManager::getInstance().maskPatternActive()`, so a pattern-off
+    // run performs one singleton lookup and one relaxed atomic load per candidate cell
+    // that it did not before. Second, byte-identical trajectories are unachievable for
+    // ANY two runs here: the extractor threads race and two runs of the same binary
+    // differ by up to 3.9%.
+    //
+    // What the off-equivalence check actually verifies is that skipCell is never CALLED
+    // when pattern and OASIS are both off -- demonstrated by the absence of
+    // cellManager.txt, since skipCell is the only thing that registers the pyramid
+    // dimensions that file requires.
     // Whether the ADAPTIVE OASIS controller was requested in the settings file, as
     // distinct from `enableOasis` below, which means "the controller has warmed up".
     // Conflating the two is what made the static patterns dead code: the extractor
