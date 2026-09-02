@@ -50,7 +50,17 @@ private:
     // beyond it are ignored rather than allowed to write out of bounds.
     static constexpr size_t kMaxPyramidLevels = 16;
     std::array<std::atomic<int>, kMaxPyramidLevels> cells_per_level{};  // cells processed per level
-    std::atomic<int> frame_budget;
+    // frame_budget is PUBLISHED for observability. Until 2026-09-02 a local of the same
+    // name in endFrame shadowed it, so printStats read a member nothing wrote and every
+    // cellManager.txt in this project recorded "Frame Budget in Cells: 0".
+    std::atomic<int> frame_budget{0};
+    // Which branch set it, so an actuation trace can distinguish the under-budget path
+    // from the over-budget one instead of inferring it from the frame time.
+    std::atomic<bool> last_over_budget{false};
+    // Opt-in correction for the missing stereo halving in the over-budget branch. Default
+    // FALSE so an unmodified config reproduces the published behaviour exactly; the
+    // deadline experiment collects both arms from one binary by flipping this key.
+    std::atomic<bool> overBudgetFix{false};
     std::atomic<bool> enableOasis = false;
     std::atomic<int> skip_frames = 0;
 
@@ -131,6 +141,7 @@ public:
     // reached CellManager at all.
     std::atomic<bool> oasisRequested{ false };
     void setOasisRequested(bool v) { oasisRequested.store(v, std::memory_order_relaxed); }
+    void setOverBudgetFix(bool v) { overBudgetFix.store(v, std::memory_order_relaxed); }
 
     // True when a static masking pattern is selected. The extractor consults this so
     // it calls skipCell for pattern-only runs, which do NOT set System.enableOasis.

@@ -256,7 +256,15 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     // if no Cells were recorded, return
     if(elapsed_cells == 0)
     {
-	frame_budget = static_cast<int>(1.0 / actualFrameTime * getAverageCellsPerFrame());
+        // NOTE, as-shipped and deliberately left alone: this formula is
+        // `1/ms x cells`, not `ms / (ms/cell)` -- dimensionally it is not a cell count at
+        // all, and it disagrees with the budget computed 30 lines below. It was
+        // unobservable while a local shadowed the member (nothing ever read it), and it is
+        // reached only on a frame that extracted zero cells. Publishing the real budget
+        // makes this line's output visible for the first time, so it is flagged here
+        // rather than corrected: changing it would change published behaviour on a path
+        // this experiment does not exercise.
+        frame_budget = static_cast<int>(1.0 / actualFrameTime * getAverageCellsPerFrame());
         return;
     }
 
@@ -287,11 +295,17 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     // based on when we're done with the frame, assumming actual time elapsed is < 50ms
     // if it's > 50ms, we'll have to adjust the budget accordingly
     const double frame_time = 50.0f; //ms
-    double frame_budget = static_cast<int>( frame_time / time_per_cell );
+    // budget_cells, NOT frame_budget. A local named frame_budget SHADOWED the member of
+    // the same name (CellManager.h:53) for the whole remainder of endFrame, so printStats
+    // read the member -- which the normal path never writes. "Frame Budget in Cells: 0" is
+    // consequently the ONLY value in every cellManager.txt this project has ever produced,
+    // across 1371 runs. The budget is the central observable of the deadline experiment,
+    // and it was never once recorded.
+    double budget_cells = static_cast<int>( frame_time / time_per_cell );
     
     // if we're doing stereo slam, we need to halve the budget (processing two images per frame)
     if( stereo_slam )
-        frame_budget /= 2;
+        budget_cells /= 2;
 
     if( actualFrameTime > frame_time )   // if we're over budget, adjust the frame budget for the next frame
     {
@@ -313,11 +327,35 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
         // in this frame!
         const double remaining_budget = (2*frame_time) - ( actualFrameTime - frame_time * (skip_frames -1) );
         if( skip_frames ) skip_frames--; // decrement!
-        frame_budget =  static_cast<int>( remaining_budget / time_per_cell);
+        budget_cells =  static_cast<int>( remaining_budget / time_per_cell);
+
+        // THE STEREO HALVING IS MISSING FROM THIS BRANCH AS SHIPPED.
+        //
+        // Twenty lines above, the under-budget path halves the budget for stereo because
+        // the frame processes two images while the mask-selection loop below counts cells
+        // for ONE. This branch overwrites the budget and does not re-apply that halving,
+        // so crossing the deadline hands the selector a budget that is twice what the same
+        // frame time would have produced had it stayed under. A review seat found it and
+        // reproduced the arithmetic against the one 63.92 ms frame in the TUM-VI
+        // collection: the next predicted_ms became 36.07, exactly as the unhalved formula
+        // gives.
+        //
+        // Gated rather than simply corrected, because this project reproduces a published
+        // artifact: `System.oasisOverBudgetFix: 1` opts in, and with the key absent the
+        // behaviour is bit-for-bit what the paper's code does. That lets one binary serve
+        // both arms of the comparison instead of forcing a third build.
+        if( stereo_slam && overBudgetFix.load(std::memory_order_relaxed) )
+            budget_cells /= 2;
     }
 
     //store estimated time prediction for next frame
-    g_pending_pred_ms = frame_budget * time_per_cell;
+    g_pending_pred_ms = budget_cells * time_per_cell;
+
+    // PUBLISH THE BUDGET AND THE BRANCH so printStats and the analysis can see them. Until
+    // now neither was observable: the budget went into a shadowing local, and nothing
+    // recorded whether the over-budget path had run.
+    frame_budget = static_cast<int>( budget_cells );
+    last_over_budget = ( actualFrameTime > frame_time );
 
     // Iterate through each mask size, calculating the number
     // of cells the proposed mask will cover, and compare that against
@@ -363,7 +401,7 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
             }
         }
 
-        if( cells_in_mask < frame_budget )
+        if( cells_in_mask < budget_cells )
         {
             // we're still in budget! keep going
             continue;
@@ -446,6 +484,7 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
     file << " - Elapsed Cells: " << elapsed_cells << "\n";
     file << " - Average Cells Per Frame: " << getAverageCellsPerFrame() << "\n";
     file << " - Frame Budget in Cells: " << frame_budget << "\n";
+    file << " - Over Budget: " << (last_over_budget.load(std::memory_order_relaxed) ? 1 : 0) << "\n";
     
     // Print out the FOV_MASK
     file << " - FOV Mask: " << FOV_MASK.width << "x" << FOV_MASK.height << "\n";

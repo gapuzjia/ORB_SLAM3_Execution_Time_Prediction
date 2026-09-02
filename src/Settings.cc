@@ -525,6 +525,16 @@ namespace ORB_SLAM3 {
 
         enableOasis = (bool)readParameter<int>(fSettings,"System.enableOasis",found,false);
         CellManager::getInstance().setOasisRequested(enableOasis);
+        // Opt-in only. Absent, the over-budget branch keeps its published behaviour, so
+        // "reproduce the artifact" and "measure what the defect costs" are two configs
+        // against one binary rather than two builds.
+        {
+            bool obfFound = false;
+            const bool obf = (bool)readParameter<int>(fSettings,"System.oasisOverBudgetFix",obfFound,false);
+            CellManager::getInstance().setOverBudgetFix(obf);
+            if(obf)
+                cout << "OASIS over-budget stereo halving CORRECTED (System.oasisOverBudgetFix)" << endl;
+        }
         if(enableOasis)
         {
             cout << "OASIS enabled" << endl;
