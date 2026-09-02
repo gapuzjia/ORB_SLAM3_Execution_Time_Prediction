@@ -191,29 +191,46 @@ void Tracking::LocalMapStats2File()
     f.open("LocalMapTimeStats.txt");
     f << fixed << setprecision(6);
     f << "#Stereo rect[ms], MP culling[ms], MP creation[ms], LBA[ms], KF culling[ms], Total[ms]" << endl;
-    // SAME DEFECT AS TrackStats2File, twice over, and here with no guard at all: the
-    // loop is bounded by ONE vector's size and then indexes five siblings that the
-    // local mapper does not push to in lockstep -- local BA in particular does not run
-    // on every keyframe insertion, so vdLBASync_ms is routinely shorter than
-    // vdLMTotal_ms. Bound by the shortest.
-    const size_t n_lm = std::min({mpLocalMapper->vdLMTotal_ms.size(),
-                                  mpLocalMapper->vdKFInsert_ms.size(),
-                                  mpLocalMapper->vdMPCulling_ms.size(),
-                                  mpLocalMapper->vdMPCreation_ms.size(),
-                                  mpLocalMapper->vdLBASync_ms.size(),
-                                  mpLocalMapper->vdKFCullingSync_ms.size()});
-    if(n_lm < mpLocalMapper->vdLMTotal_ms.size())
-    {
-        cout << "LocalMapStats2File: local-mapping timing vectors are ragged (total="
-             << mpLocalMapper->vdLMTotal_ms.size() << " lba="
-             << mpLocalMapper->vdLBASync_ms.size() << "); writing " << n_lm
-             << " complete row(s)" << endl;
-    }
+    // SAME DEFECT AS TrackStats2File, and the same correction: alignment is a LENGTH
+    // TEST, not a bound. Each loop was bounded by one vector's size and then indexed five
+    // siblings, and the local mapper does not append to them in lockstep -- local BA does
+    // not run on every keyframe insertion, so vdLBASync_ms is routinely shorter than
+    // vdLMTotal_ms, and the vnLBA_* counters are appended only inside `if(b_doneLBA)` so
+    // they are shorter still. Bounding by the minimum stopped the overrun without
+    // restoring correspondence: it paired an LBA time with a different LBA's counters.
+    // A review seat caught that.
+    //
+    // Vectors are read only when they are the same length as the timeline; anything else
+    // is left empty and named on stdout.
+    const size_t n_lm = mpLocalMapper->vdLMTotal_ms.size();
+    auto lm_ok = [n_lm](size_t n) { return n == n_lm; };
+    const bool lm_ins   = lm_ok(mpLocalMapper->vdKFInsert_ms.size());
+    const bool lm_cull  = lm_ok(mpLocalMapper->vdMPCulling_ms.size());
+    const bool lm_creat = lm_ok(mpLocalMapper->vdMPCreation_ms.size());
+    const bool lm_lba   = lm_ok(mpLocalMapper->vdLBASync_ms.size());
+    const bool lm_kfc   = lm_ok(mpLocalMapper->vdKFCullingSync_ms.size());
+    if(!(lm_ins && lm_cull && lm_creat && lm_lba && lm_kfc))
+        cout << "LocalMapStats2File: " << n_lm << " local-mapping iterations; not all "
+             << "columns are per-iteration (insert=" << mpLocalMapper->vdKFInsert_ms.size()
+             << " cull=" << mpLocalMapper->vdMPCulling_ms.size()
+             << " create=" << mpLocalMapper->vdMPCreation_ms.size()
+             << " lba=" << mpLocalMapper->vdLBASync_ms.size()
+             << " kfcull=" << mpLocalMapper->vdKFCullingSync_ms.size()
+             << "); the misaligned ones are left empty" << endl;
+    // emit_field, rather than `if(ok) f << v; f << ",";` on one line: the comma is
+    // unconditional BY DESIGN -- every row keeps its field count -- but written inline
+    // that reads exactly like a guard bug, and -Wmisleading-indentation says so. In a
+    // codebase where a correct-looking check that could not fire cost four crash
+    // investigations, "obviously right" beats "actually right but looks wrong".
+    auto emit_field = [&f](bool ok, double v) { if(ok) { f << v; } f << ","; };
     for(size_t i=0; i<n_lm; ++i)
     {
-        f << mpLocalMapper->vdKFInsert_ms[i] << "," << mpLocalMapper->vdMPCulling_ms[i] << ","
-          << mpLocalMapper->vdMPCreation_ms[i] << "," << mpLocalMapper->vdLBASync_ms[i] << ","
-          << mpLocalMapper->vdKFCullingSync_ms[i] <<  "," << mpLocalMapper->vdLMTotal_ms[i] << endl;
+        emit_field(lm_ins,   mpLocalMapper->vdKFInsert_ms.empty()      ? 0.0 : mpLocalMapper->vdKFInsert_ms[i]);
+        emit_field(lm_cull,  mpLocalMapper->vdMPCulling_ms.empty()     ? 0.0 : mpLocalMapper->vdMPCulling_ms[i]);
+        emit_field(lm_creat, mpLocalMapper->vdMPCreation_ms.empty()    ? 0.0 : mpLocalMapper->vdMPCreation_ms[i]);
+        emit_field(lm_lba,   mpLocalMapper->vdLBASync_ms.empty()       ? 0.0 : mpLocalMapper->vdLBASync_ms[i]);
+        emit_field(lm_kfc,   mpLocalMapper->vdKFCullingSync_ms.empty() ? 0.0 : mpLocalMapper->vdKFCullingSync_ms[i]);
+        f << mpLocalMapper->vdLMTotal_ms[i] << endl;
     }
 
     f.close();
@@ -221,18 +238,31 @@ void Tracking::LocalMapStats2File()
     f.open("LBA_Stats.txt");
     f << fixed << setprecision(6);
     f << "#LBA time[ms],KF opt[#],KF fixed[#],MP[#],Edges[#]" << endl;
-    const size_t n_lba = std::min({mpLocalMapper->vdLBASync_ms.size(),
-                                   mpLocalMapper->vnLBA_KFopt.size(),
-                                   mpLocalMapper->vnLBA_KFfixed.size(),
-                                   mpLocalMapper->vnLBA_MPs.size(),
-                                   mpLocalMapper->vnLBA_edges.size()});
+    // The vnLBA_* counters are appended together, only when local BA actually ran, so
+    // they agree with each other but NOT with vdLBASync_ms, which is appended for every
+    // processed keyframe. Emit rows only over the counters' own timeline, and pair the
+    // LBA time only when it too has that length -- which is the only circumstance under
+    // which the pairing means anything.
+    const size_t n_lba = mpLocalMapper->vnLBA_KFopt.size();
+    const bool lba_time_ok = (mpLocalMapper->vdLBASync_ms.size() == n_lba);
+    const bool lba_rest_ok = (mpLocalMapper->vnLBA_KFfixed.size() == n_lba
+                              && mpLocalMapper->vnLBA_MPs.size() == n_lba
+                              && mpLocalMapper->vnLBA_edges.size() == n_lba);
+    if(!lba_time_ok)
+        cout << "LBA_Stats: " << n_lba << " local-BA events but "
+             << mpLocalMapper->vdLBASync_ms.size() << " LBA timings (that vector counts "
+             << "processed keyframes, not BA runs); the time column is left empty" << endl;
     for(size_t i=0; i<n_lba; ++i)
     {
-        f << mpLocalMapper->vdLBASync_ms[i] << "," << mpLocalMapper->vnLBA_KFopt[i] << ","
-          << mpLocalMapper->vnLBA_KFfixed[i] << "," << mpLocalMapper->vnLBA_MPs[i] << ","
-          << mpLocalMapper->vnLBA_edges[i] << endl;
+        if(lba_time_ok) { f << mpLocalMapper->vdLBASync_ms[i]; }
+        f << ",";
+        if(lba_rest_ok)
+            f << mpLocalMapper->vnLBA_KFopt[i] << "," << mpLocalMapper->vnLBA_KFfixed[i]
+              << "," << mpLocalMapper->vnLBA_MPs[i] << "," << mpLocalMapper->vnLBA_edges[i];
+        else
+            f << ",,,";
+        f << endl;
     }
-
 
     f.close();
 }
@@ -254,71 +284,72 @@ void Tracking::TrackStats2File()
 
     f << "#Frame Timestamp[ns],Image Rect[ms],Image Resize[ms],ORB ext[ms],Stereo match[ms],IMU preint[ms],Pose pred[ms],LM track[ms],KF dec[ms],Total[ms]" << endl;
 
-    // EVERY vector below is indexed with the SAME i as vdTrackTotal_ms, but the stages
-    // that fill them do not all run on every frame: a tracking loss, a relocalisation or
-    // an active-map reset pushes to some and not others, so the vectors go RAGGED. Four
-    // of them were indexed with no guard at all (ORBExtract, PosePred, LMTrack, NewKF)
-    // and five more were guarded by !empty(), which is a PROXY for the property that
-    // actually matters -- i < size(). A vector that is merely SHORTER than
-    // vdTrackTotal_ms passes an !empty() test and is then read out of bounds.
+    // EVERY vector below is indexed with the SAME i as vdTrackTotal_ms, and that is only
+    // MEANINGFUL for a vector with one entry per frame. The stages do not all run on every
+    // frame -- vdPosePred_ms, vdLMTrack_ms and vdNewKF_ms are appended from inside
+    // conditionals -- so those vectors are COMPRESSED, not merely short: entry k belongs
+    // to the k-th frame that reached that stage, not to frame k.
     //
-    // The consequence is not a bad number, it is a SIGSEGV inside TrackStats2File on the
-    // normal exit path -- after the run has finished tracking and printed "SLAM
-    // Finished", so the run's own log reads as a success while TrackingTimeStats.txt is
-    // left holding nothing but its header. Observed on the first TUM-VI run attempted:
-    // tracking never initialised, so vdNewKF_ms/vdLMTrack_ms were empty while
-    // vdTrackTotal_ms held 40 entries, and the crash happened at i = 0.
+    // The original code indexed them anyway, past their ends. Bounding the loop by the
+    // shortest vector (the previous fix here) stopped the overrun but did NOT restore
+    // correspondence: it silently paired stage measurements with the wrong frames. A
+    // review seat caught that, and the corruption is visible in data already collected --
+    // in runs/fixed/MH_01_easy/run1/TrackingTimeStats.txt, `Total[ms]` peaks at 37.59 ms
+    // while `Pose pred[ms]` reaches 2.6e13 with one nan, and `LM track`/`KF dec` reach
+    // 304 ms and 715 ms. Three of ten columns are unusable. (Nothing published depends on
+    // them: analyze_density.py reads only fields 3 and 9, `ORB ext[ms]` and `Total[ms]`,
+    // both of which are per-frame and sound -- 7.26-18.48 ms and 15.25-37.59 ms.)
     //
-    // Bound the loop by the shortest UNGUARDED vector and test size on the rest. A
-    // truncation is reported rather than silently swallowed, because a short stats file
-    // is otherwise indistinguishable from a short run.
-    const size_t n_rows = std::min({vdTrackTotal_ms.size(), vdORBExtract_ms.size(),
-                                    vdPosePred_ms.size(), vdLMTrack_ms.size(),
-                                    vdNewKF_ms.size()});
-    if(n_rows < vdTrackTotal_ms.size())
+    // ALIGNMENT IS A LENGTH TEST, not a bound. A sibling vector is index-comparable with
+    // the per-frame timeline only if it has the SAME length as it. Anything else is
+    // reported as unavailable -- an empty field -- rather than guessed at, and the columns
+    // dropped are named on stdout so a short column is never mistaken for a small value.
+    const size_t n_rows = vdTrackTotal_ms.size();
+    auto aligned = [n_rows](size_t n) { return n == n_rows; };
+    const bool ok_ts    = aligned(vdFrameTimestamps.size());
+    const bool ok_rect  = aligned(vdRectStereo_ms.size());
+    const bool ok_resz  = aligned(vdResizeImage_ms.size());
+    const bool ok_orb   = aligned(vdORBExtract_ms.size());
+    const bool ok_match = aligned(vdStereoMatch_ms.size());
+    const bool ok_imu   = aligned(vdIMUInteg_ms.size());
+    const bool ok_pose  = aligned(vdPosePred_ms.size());
+    const bool ok_lm    = aligned(vdLMTrack_ms.size());
+    const bool ok_kf    = aligned(vdNewKF_ms.size());
     {
-        cout << "TrackStats2File: per-stage timing vectors are ragged (total="
-             << vdTrackTotal_ms.size() << " orb=" << vdORBExtract_ms.size()
-             << " pose=" << vdPosePred_ms.size() << " lm=" << vdLMTrack_ms.size()
-             << " kf=" << vdNewKF_ms.size() << "); writing " << n_rows
-             << " complete row(s)" << endl;
+        std::string dropped;
+        if(!ok_ts)    dropped += " timestamp("    + std::to_string(vdFrameTimestamps.size()) + ")";
+        if(!ok_rect)  dropped += " rect("         + std::to_string(vdRectStereo_ms.size())   + ")";
+        if(!ok_resz)  dropped += " resize("       + std::to_string(vdResizeImage_ms.size())  + ")";
+        if(!ok_orb)   dropped += " orb("          + std::to_string(vdORBExtract_ms.size())   + ")";
+        if(!ok_match) dropped += " stereo_match(" + std::to_string(vdStereoMatch_ms.size())  + ")";
+        if(!ok_imu)   dropped += " imu_preint("   + std::to_string(vdIMUInteg_ms.size())     + ")";
+        if(!ok_pose)  dropped += " pose_pred("    + std::to_string(vdPosePred_ms.size())     + ")";
+        if(!ok_lm)    dropped += " lm_track("     + std::to_string(vdLMTrack_ms.size())      + ")";
+        if(!ok_kf)    dropped += " kf_dec("       + std::to_string(vdNewKF_ms.size())        + ")";
+        if(!dropped.empty())
+            cout << "TrackStats2File: " << n_rows << " frames; column(s) NOT per-frame and "
+                 << "therefore left empty (own length in brackets):" << dropped << endl;
     }
 
+    // The field count stays at ten on every row, whatever is available: analyze_density.py
+    // requires ten fields before it will read a row at all.
+    // A guarded read is only ever indexed when its vector has the full length, so the
+    // ternaries below can never be evaluated on an out-of-range index -- but they are
+    // written defensively anyway, because the guard and the index are on the same line
+    // and a future edit could separate them.
+    auto emit_field = [&f](bool ok, double v) { if(ok) { f << v; } f << ","; };
     for(size_t i=0; i<n_rows; ++i)
     {
-        double timestamp = 0.0;
-        if(i < vdFrameTimestamps.size())
-        {
-            timestamp = ceil(vdFrameTimestamps[i]*1e9);
-        }
-
-        double stereo_rect = 0.0;
-        if(i < vdRectStereo_ms.size())
-        {
-            stereo_rect = vdRectStereo_ms[i];
-        }
-
-        double resize_image = 0.0;
-        if(i < vdResizeImage_ms.size())
-        {
-            resize_image = vdResizeImage_ms[i];
-        }
-
-        double stereo_match = 0.0;
-        if(i < vdStereoMatch_ms.size())
-        {
-            stereo_match = vdStereoMatch_ms[i];
-        }
-
-        double imu_preint = 0.0;
-        if(i < vdIMUInteg_ms.size())
-        {
-            imu_preint = vdIMUInteg_ms[i];
-        }
-
-        f << timestamp << ","
-          << stereo_rect << "," << resize_image << "," << vdORBExtract_ms[i] << "," << stereo_match << "," << imu_preint << ","
-          << vdPosePred_ms[i] <<  "," << vdLMTrack_ms[i] << "," << vdNewKF_ms[i] << "," << vdTrackTotal_ms[i] << endl;
+        emit_field(ok_ts,    ok_ts    ? ceil(vdFrameTimestamps[i]*1e9) : 0.0);
+        emit_field(ok_rect,  ok_rect  ? vdRectStereo_ms[i]   : 0.0);
+        emit_field(ok_resz,  ok_resz  ? vdResizeImage_ms[i]  : 0.0);
+        emit_field(ok_orb,   ok_orb   ? vdORBExtract_ms[i]   : 0.0);
+        emit_field(ok_match, ok_match ? vdStereoMatch_ms[i]  : 0.0);
+        emit_field(ok_imu,   ok_imu   ? vdIMUInteg_ms[i]     : 0.0);
+        emit_field(ok_pose,  ok_pose  ? vdPosePred_ms[i]     : 0.0);
+        emit_field(ok_lm,    ok_lm    ? vdLMTrack_ms[i]      : 0.0);
+        emit_field(ok_kf,    ok_kf    ? vdNewKF_ms[i]        : 0.0);
+        f << vdTrackTotal_ms[i] << endl;
     }
 
     f.close();
