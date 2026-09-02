@@ -262,10 +262,17 @@ private:
     LoopClosing* mpLoopCloser;
 
     // The viewer draws the map and the current camera pose. It uses Pangolin.
-    Viewer* mpViewer;
+    // INITIALISED, not merely declared. Without GUI these three are never assigned
+    // (see the #ifdef GUI block in System.cc), so as bare members they held
+    // indeterminate values that were then passed straight into Tracking. Every use
+    // site in Tracking calls an empty inlined stub method, which emits no
+    // dereference and so appeared to work -- except `mpFrameDrawer->both = true`,
+    // which is a real 1-byte store and segfaulted. Defined values first; the
+    // allocation below then makes the pointers valid rather than merely null.
+    Viewer* mpViewer = nullptr;
 
-    FrameDrawer* mpFrameDrawer;
-    MapDrawer* mpMapDrawer;
+    FrameDrawer* mpFrameDrawer = nullptr;
+    MapDrawer* mpMapDrawer = nullptr;
 
     // System threads: Local Mapping, Loop Closing, Viewer.
     // The Tracking thread "lives" in the main execution thread that creates the System object.

@@ -207,6 +207,25 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     //Create Drawers. These are used by the Viewer
     mpFrameDrawer = new FrameDrawer(mpAtlas);
     mpMapDrawer = new MapDrawer(mpAtlas, strSettingsFile, settings_);
+    #else
+    // ALLOCATE THE NO-GUI STUBS. Previously this branch did not exist, so a no-GUI
+    // build passed an unassigned mpFrameDrawer/mpMapDrawer into Tracking and every
+    // `mpFrameDrawer->`/`mpMapDrawer->` site in the tracker operated on a pointer to
+    // nowhere. It survived 1350 EuRoC runs only because the stubs' methods are empty
+    // and inlined, so the compiler emitted no dereference for them -- undefined
+    // behaviour that the optimiser happened to render harmless.
+    //
+    // `mpFrameDrawer->both = true` is the exception: a real store, reached ONLY on the
+    // KannalaBrandt stereo path (Tracking.cc:578 in the Settings loader and
+    // Tracking.cc:1132 in the legacy one). Every EuRoC config here is Rectified or
+    // PinHole, so that path was never taken -- and it segfaults on the FIRST TUM-VI
+    // run, before frame 0, inside Tracking::newParameterLoader.
+    //
+    // Allocating the stubs fixes every site at once, including ones added later,
+    // instead of scattering null checks that the next use site will forget. The stubs
+    // are trivial objects -- one bool and empty inline methods.
+    mpFrameDrawer = new FrameDrawer();
+    mpMapDrawer = new MapDrawer();
     #endif // GUI
 
     // Load up the Control file if SlimSLAM is enabled
@@ -831,7 +850,15 @@ void System::SaveTrajectoryEuRoC(const string &filename)
 
     vector<Map*> vpMaps = mpAtlas->GetAllMaps();
     int numMaxKFs = 0;
-    Map* pBiggerMap;
+    // INITIALISED. This was a bare `Map* pBiggerMap;`, and the loop below only assigns
+    // it when a map has MORE keyframes than the running maximum -- so when every map has
+    // zero (tracking never initialised, or every map was reset away) the comparison
+    // `0 > 0` is false for all of them, nothing is assigned, and the dereference two
+    // lines down reads through whatever was on the stack. That is the SIGSEGV behind the
+    // long-open "rc=139 on 65% of sequences" question for the as-built arm, and it is
+    // reproducible in 40 frames: 0 keyframes, then a fault inside
+    // Map::GetAllKeyFrames() on a mutex address of 0xfff80000000001f8.
+    Map* pBiggerMap = nullptr;
     std::cout << "There are " << std::to_string(vpMaps.size()) << " maps in the atlas" << std::endl;
     for(Map* pMap :vpMaps)
     {
@@ -843,8 +870,29 @@ void System::SaveTrajectoryEuRoC(const string &filename)
         }
     }
 
+    // A run with no keyframes has no trajectory to write. Say so and return, rather than
+    // crashing: the distinction between "this configuration could not initialise" and
+    // "the process died for an unknown reason" is the whole difference between a
+    // diagnosable failure and an unexplained one.
+    if(!pBiggerMap)
+    {
+        cerr << "SaveTrajectoryEuRoC: the atlas holds no map with any keyframes ("
+             << vpMaps.size() << " map(s) examined) — nothing to save to " << filename
+             << ". Tracking never initialised on this sequence." << endl;
+        return;
+    }
+
     vector<KeyFrame*> vpKFs = pBiggerMap->GetAllKeyFrames();
     sort(vpKFs.begin(),vpKFs.end(),KeyFrame::lId);
+
+    // vpKFs[0] is read unconditionally below. numMaxKFs > 0 guarantees this is non-empty
+    // today, but the guarantee lives ten lines away and one edit would break it.
+    if(vpKFs.empty())
+    {
+        cerr << "SaveTrajectoryEuRoC: selected map " << pBiggerMap->GetId()
+             << " reports no keyframes — nothing to save to " << filename << endl;
+        return;
+    }
 
     // Transform all keyframes so that the first keyframe is at the origin.
     // After a loop closure the first keyframe might not be at the origin.
@@ -1051,19 +1099,35 @@ void System::SaveTrajectoryEuRoC(const string &filename, Map* pMap)
         return;
     }
 
+    // Same defect as the primary SaveTrajectoryEuRoC: the pointer is assigned only when
+    // a map beats the running maximum, so with every map at zero keyframes nothing is
+    // assigned and the dereference below reads the stack.
     vector<Map*> vpMaps = mpAtlas->GetAllMaps();
-    Map* pBiggerMap;
+    Map* pBiggerMap = nullptr;
     int numMaxKFs = 0;
     for(Map* pMap :vpMaps)
     {
-        if(pMap->GetAllKeyFrames().size() > numMaxKFs)
+        if(pMap && pMap->GetAllKeyFrames().size() > numMaxKFs)
         {
             numMaxKFs = pMap->GetAllKeyFrames().size();
             pBiggerMap = pMap;
         }
     }
 
+    if(!pBiggerMap)
+    {
+        cerr << "no map with any keyframes (" << vpMaps.size()
+             << " map(s) examined) — nothing to save to " << filename << endl;
+        return;
+    }
+
     vector<KeyFrame*> vpKFs = pBiggerMap->GetAllKeyFrames();
+    if(vpKFs.empty())
+    {
+        cerr << "selected map reports no keyframes — nothing to save to "
+             << filename << endl;
+        return;
+    }
     sort(vpKFs.begin(),vpKFs.end(),KeyFrame::lId);
 
     // Transform all keyframes so that the first keyframe is at the origin.
@@ -1166,19 +1230,35 @@ void System::SaveTrajectoryEuRoC(const string &filename, Map* pMap)
 {
     cout << endl << "Saving keyframe trajectory to " << filename << " ..." << endl;
 
+    // Same defect as the primary SaveTrajectoryEuRoC: the pointer is assigned only when
+    // a map beats the running maximum, so with every map at zero keyframes nothing is
+    // assigned and the dereference below reads the stack.
     vector<Map*> vpMaps = mpAtlas->GetAllMaps();
-    Map* pBiggerMap;
+    Map* pBiggerMap = nullptr;
     int numMaxKFs = 0;
     for(Map* pMap :vpMaps)
     {
-        if(pMap->GetAllKeyFrames().size() > numMaxKFs)
+        if(pMap && pMap->GetAllKeyFrames().size() > numMaxKFs)
         {
             numMaxKFs = pMap->GetAllKeyFrames().size();
             pBiggerMap = pMap;
         }
     }
 
+    if(!pBiggerMap)
+    {
+        cerr << "no map with any keyframes (" << vpMaps.size()
+             << " map(s) examined) — nothing to save to " << filename << endl;
+        return;
+    }
+
     vector<KeyFrame*> vpKFs = pBiggerMap->GetAllKeyFrames();
+    if(vpKFs.empty())
+    {
+        cerr << "selected map reports no keyframes — nothing to save to "
+             << filename << endl;
+        return;
+    }
     sort(vpKFs.begin(),vpKFs.end(),KeyFrame::lId);
 
     // Transform all keyframes so that the first keyframe is at the origin.
@@ -1219,7 +1299,13 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename)
     cout << endl << "Saving keyframe trajectory to " << filename << " ..." << endl;
 
     vector<Map*> vpMaps = mpAtlas->GetAllMaps();
-    Map* pBiggerMap;
+    // A CHECK THAT COULD NOT FAIL. The `if(!pBiggerMap)` below is correct and was
+    // already here -- but the pointer it tests was declared with no initialiser, so when
+    // no map has any keyframes the guard inspects whatever the stack held. Non-null
+    // garbage passes it, and GetAllKeyFrames() then locks a mutex at a junk address:
+    // glibc aborts in __pthread_tpp_change_priority (SIGABRT, rc=134) rather than
+    // segfaulting, which is why this failure has appeared under two different exit codes.
+    Map* pBiggerMap = nullptr;
     int numMaxKFs = 0;
     for(Map* pMap :vpMaps)
     {
@@ -1232,7 +1318,9 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename)
 
     if(!pBiggerMap)
     {
-        std::cout << "There is not a map!!" << std::endl;
+        cerr << "SaveKeyFrameTrajectoryEuRoC: no map with any keyframes ("
+             << vpMaps.size() << " map(s) examined) — nothing to save to "
+             << filename << endl;
         return;
     }
 

@@ -31,6 +31,7 @@
 #include "GeometricTools.h"
 #include "SlimSLAM.hpp"
 
+#include <algorithm>
 #include <iostream>
 
 #include <mutex>
@@ -190,7 +191,25 @@ void Tracking::LocalMapStats2File()
     f.open("LocalMapTimeStats.txt");
     f << fixed << setprecision(6);
     f << "#Stereo rect[ms], MP culling[ms], MP creation[ms], LBA[ms], KF culling[ms], Total[ms]" << endl;
-    for(int i=0; i<mpLocalMapper->vdLMTotal_ms.size(); ++i)
+    // SAME DEFECT AS TrackStats2File, twice over, and here with no guard at all: the
+    // loop is bounded by ONE vector's size and then indexes five siblings that the
+    // local mapper does not push to in lockstep -- local BA in particular does not run
+    // on every keyframe insertion, so vdLBASync_ms is routinely shorter than
+    // vdLMTotal_ms. Bound by the shortest.
+    const size_t n_lm = std::min({mpLocalMapper->vdLMTotal_ms.size(),
+                                  mpLocalMapper->vdKFInsert_ms.size(),
+                                  mpLocalMapper->vdMPCulling_ms.size(),
+                                  mpLocalMapper->vdMPCreation_ms.size(),
+                                  mpLocalMapper->vdLBASync_ms.size(),
+                                  mpLocalMapper->vdKFCullingSync_ms.size()});
+    if(n_lm < mpLocalMapper->vdLMTotal_ms.size())
+    {
+        cout << "LocalMapStats2File: local-mapping timing vectors are ragged (total="
+             << mpLocalMapper->vdLMTotal_ms.size() << " lba="
+             << mpLocalMapper->vdLBASync_ms.size() << "); writing " << n_lm
+             << " complete row(s)" << endl;
+    }
+    for(size_t i=0; i<n_lm; ++i)
     {
         f << mpLocalMapper->vdKFInsert_ms[i] << "," << mpLocalMapper->vdMPCulling_ms[i] << ","
           << mpLocalMapper->vdMPCreation_ms[i] << "," << mpLocalMapper->vdLBASync_ms[i] << ","
@@ -202,7 +221,12 @@ void Tracking::LocalMapStats2File()
     f.open("LBA_Stats.txt");
     f << fixed << setprecision(6);
     f << "#LBA time[ms],KF opt[#],KF fixed[#],MP[#],Edges[#]" << endl;
-    for(int i=0; i<mpLocalMapper->vdLBASync_ms.size(); ++i)
+    const size_t n_lba = std::min({mpLocalMapper->vdLBASync_ms.size(),
+                                   mpLocalMapper->vnLBA_KFopt.size(),
+                                   mpLocalMapper->vnLBA_KFfixed.size(),
+                                   mpLocalMapper->vnLBA_MPs.size(),
+                                   mpLocalMapper->vnLBA_edges.size()});
+    for(size_t i=0; i<n_lba; ++i)
     {
         f << mpLocalMapper->vdLBASync_ms[i] << "," << mpLocalMapper->vnLBA_KFopt[i] << ","
           << mpLocalMapper->vnLBA_KFfixed[i] << "," << mpLocalMapper->vnLBA_MPs[i] << ","
@@ -230,34 +254,64 @@ void Tracking::TrackStats2File()
 
     f << "#Frame Timestamp[ns],Image Rect[ms],Image Resize[ms],ORB ext[ms],Stereo match[ms],IMU preint[ms],Pose pred[ms],LM track[ms],KF dec[ms],Total[ms]" << endl;
 
-    for(int i=0; i<vdTrackTotal_ms.size(); ++i)
+    // EVERY vector below is indexed with the SAME i as vdTrackTotal_ms, but the stages
+    // that fill them do not all run on every frame: a tracking loss, a relocalisation or
+    // an active-map reset pushes to some and not others, so the vectors go RAGGED. Four
+    // of them were indexed with no guard at all (ORBExtract, PosePred, LMTrack, NewKF)
+    // and five more were guarded by !empty(), which is a PROXY for the property that
+    // actually matters -- i < size(). A vector that is merely SHORTER than
+    // vdTrackTotal_ms passes an !empty() test and is then read out of bounds.
+    //
+    // The consequence is not a bad number, it is a SIGSEGV inside TrackStats2File on the
+    // normal exit path -- after the run has finished tracking and printed "SLAM
+    // Finished", so the run's own log reads as a success while TrackingTimeStats.txt is
+    // left holding nothing but its header. Observed on the first TUM-VI run attempted:
+    // tracking never initialised, so vdNewKF_ms/vdLMTrack_ms were empty while
+    // vdTrackTotal_ms held 40 entries, and the crash happened at i = 0.
+    //
+    // Bound the loop by the shortest UNGUARDED vector and test size on the rest. A
+    // truncation is reported rather than silently swallowed, because a short stats file
+    // is otherwise indistinguishable from a short run.
+    const size_t n_rows = std::min({vdTrackTotal_ms.size(), vdORBExtract_ms.size(),
+                                    vdPosePred_ms.size(), vdLMTrack_ms.size(),
+                                    vdNewKF_ms.size()});
+    if(n_rows < vdTrackTotal_ms.size())
+    {
+        cout << "TrackStats2File: per-stage timing vectors are ragged (total="
+             << vdTrackTotal_ms.size() << " orb=" << vdORBExtract_ms.size()
+             << " pose=" << vdPosePred_ms.size() << " lm=" << vdLMTrack_ms.size()
+             << " kf=" << vdNewKF_ms.size() << "); writing " << n_rows
+             << " complete row(s)" << endl;
+    }
+
+    for(size_t i=0; i<n_rows; ++i)
     {
         double timestamp = 0.0;
-        if(!vdFrameTimestamps.empty())
+        if(i < vdFrameTimestamps.size())
         {
             timestamp = ceil(vdFrameTimestamps[i]*1e9);
         }
 
         double stereo_rect = 0.0;
-        if(!vdRectStereo_ms.empty())
+        if(i < vdRectStereo_ms.size())
         {
             stereo_rect = vdRectStereo_ms[i];
         }
 
         double resize_image = 0.0;
-        if(!vdResizeImage_ms.empty())
+        if(i < vdResizeImage_ms.size())
         {
             resize_image = vdResizeImage_ms[i];
         }
 
         double stereo_match = 0.0;
-        if(!vdStereoMatch_ms.empty())
+        if(i < vdStereoMatch_ms.size())
         {
             stereo_match = vdStereoMatch_ms[i];
         }
 
         double imu_preint = 0.0;
-        if(!vdIMUInteg_ms.empty())
+        if(i < vdIMUInteg_ms.size())
         {
             imu_preint = vdIMUInteg_ms[i];
         }
