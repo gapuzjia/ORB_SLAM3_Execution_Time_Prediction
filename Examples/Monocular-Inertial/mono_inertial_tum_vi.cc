@@ -100,7 +100,8 @@ int main(int argc, char **argv)
 
         // Find first imu to be considered, supposing imu measurements start first
 
-        while(vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][0])
+        while(first_imu[seq] < (int)vTimestampsImu[seq].size() &&
+              vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][0])
             first_imu[seq]++;
         first_imu[seq]--; // first imu measurement to be considered
 
@@ -161,7 +162,13 @@ int main(int argc, char **argv)
             {
                 // cout << "t_cam " << tframe << endl;
 
-                while(vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][ni])
+                // Bound the index. The last image can be stamped AFTER the last IMU
+                // sample -- true of converted uHumans2 (2.9 ms) and the campus ASL tree
+                // (67 ms) -- and this loop then walks off the end of the vector into an
+                // unmapped page. EuRoC never triggers it because its IMU stream ends
+                // 20-115 ms AFTER its last image, which is why it survived this long.
+                while(first_imu[seq] < (int)vTimestampsImu[seq].size() &&
+                      vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][ni])
                 {
                     vImuMeas.push_back(ORB_SLAM3::IMU::Point(vAcc[seq][first_imu[seq]].x,vAcc[seq][first_imu[seq]].y,vAcc[seq][first_imu[seq]].z,
                                                              vGyro[seq][first_imu[seq]].x,vGyro[seq][first_imu[seq]].y,vGyro[seq][first_imu[seq]].z,

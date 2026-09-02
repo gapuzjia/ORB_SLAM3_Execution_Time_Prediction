@@ -430,6 +430,10 @@ namespace ORB_SLAM3 {
         else{
             insertKFsWhenLost_ = true;
         }
+
+        // IMU.fastInit was only ever read by the legacy Tracking::ParseIMUParamFile;
+        // under File.version "1.0" it was silently ignored. Read it here too.
+        fastInit_ = readParameter<int>(fSettings,"IMU.fastInit",found,false) != 0;
     }
 
     void Settings::readRGBD(cv::FileStorage& fSettings) {

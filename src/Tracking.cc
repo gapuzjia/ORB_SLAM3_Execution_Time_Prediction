@@ -621,6 +621,9 @@ void Tracking::newParameterLoader(Settings *settings) {
     //IMU parameters
     Sophus::SE3f Tbc = settings->Tbc();
     mInsertKFsLost = settings->insertKFsWhenLost();
+    mFastInit = settings->fastInit();
+    if(mFastInit)
+        cout << "Fast IMU initialization. Acceleration is not checked \n";
     mImuFreq = settings->imuFrequency();
     mImuPer = 0.001; //1.0 / (double) mImuFreq;     //TODO: ESTO ESTA BIEN?
     float Ng = settings->noiseGyro();

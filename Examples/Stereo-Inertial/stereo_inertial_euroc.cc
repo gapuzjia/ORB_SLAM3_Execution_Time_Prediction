@@ -108,7 +108,8 @@ int main(int argc, char **argv)
 
         // Find first imu to be considered, supposing imu measurements start first
 
-        while(vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][0])
+        while(first_imu[seq] < (int)vTimestampsImu[seq].size() &&
+              vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][0])
             first_imu[seq]++;
         first_imu[seq]--; // first imu measurement to be considered
     }
@@ -167,7 +168,10 @@ int main(int argc, char **argv)
             vImuMeas.clear();
 
             if(ni>0)
-                while(vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][ni]) // while(vTimestampsImu[first_imu]<=vTimestampsCam[ni])
+                // Bound the index: if the last image is stamped after the last IMU
+                // sample this loop otherwise walks off the end of the vector.
+                while(first_imu[seq] < (int)vTimestampsImu[seq].size() &&
+                      vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][ni])
                 {
                     vImuMeas.push_back(ORB_SLAM3::IMU::Point(vAcc[seq][first_imu[seq]].x,vAcc[seq][first_imu[seq]].y,vAcc[seq][first_imu[seq]].z,
                                                              vGyro[seq][first_imu[seq]].x,vGyro[seq][first_imu[seq]].y,vGyro[seq][first_imu[seq]].z,
