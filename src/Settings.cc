@@ -525,6 +525,19 @@ namespace ORB_SLAM3 {
 
         enableOasis = (bool)readParameter<int>(fSettings,"System.enableOasis",found,false);
         CellManager::getInstance().setOasisRequested(enableOasis);
+        // The authoritative answer to "is this stereo", which endFrame otherwise has to
+        // guess from the post-mask cell count. Published unconditionally so the corrected
+        // path has it available; only System.oasisStereoFix decides whether it is USED.
+        CellManager::getInstance().setStereoSensor(
+            sensor_ == System::STEREO || sensor_ == System::IMU_STEREO);
+        {
+            bool sfFound = false;
+            const bool sf = (bool)readParameter<int>(fSettings,"System.oasisStereoFix",sfFound,false);
+            CellManager::getInstance().setStereoFix(sf);
+            if(sf)
+                cout << "OASIS stereo detection taken from the SENSOR TYPE, not the post-mask "
+                        "cell count (System.oasisStereoFix)" << endl;
+        }
         // Opt-in only. Absent, the over-budget branch keeps its published behaviour, so
         // "reproduce the artifact" and "measure what the defect costs" are two configs
         // against one binary rather than two builds.

@@ -278,14 +278,40 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
 
     cells_per_frame.push_back(elapsed_cells);
 
-    // compare largest pyramid level against elapsed cells
-    // if almost double, we can assume that stereo is done
+    // IS THIS A STEREO FRAME? Two answers, and the shipped one is a feedback loop.
+    //
+    // As shipped, stereo is INFERRED from the post-mask cell count: if this frame
+    // processed more than 1.8x a full level-0 grid, both images must have been done.
+    // That holds only while the mask is open. Once the controller masks below the
+    // threshold -- 432 cells on EuRoC, where level 0 is 20x12 -- a genuinely stereo frame
+    // is classified MONOCULAR, the `budget_cells /= 2` below is skipped, and the budget
+    // DOUBLES. The mask reopens to full grid, the cell count climbs back over the
+    // threshold, the halving returns, and the mask collapses again.
+    //
+    // It is a positive feedback loop and it closes. Measured, EuRoC MH01 at D40:
+    //   after a mono-classified frame  (cells<=432, n= 518): next mask full grid  64%
+    //   after a stereo-classified frame (cells >432, n=1550): next mask full grid  39%
+    //   mask_w histogram bimodal at 1-15 and 22, NOTHING between 16 and 21
+    //   mean frame-to-frame |delta mask_w| = 8.1 cells; 43% of transitions jump >=10
+    // Consecutive frames read (mask 1, 12 cells) then (mask 22, 1352 cells) at 133.5 ms.
+    // It also silently bypasses the overBudgetFix correction below, which sits inside the
+    // same guard -- on 31% of over-budget frames, i.e. exactly where that arm is measured.
+    //
+    // Under System.oasisStereoFix the sensor type is used instead. Settings knows it
+    // (Settings.cc: sensor_ == System::STEREO || IMU_STEREO) and it is a constant of the
+    // run, so no amount of masking can change the answer.
     bool stereo_slam = false;
-
-    const int top_level = max_level_seen.load(std::memory_order_relaxed);
-    if (top_level >= 0) {
-        stereo_slam = (elapsed_cells > (level_rows[0].load(std::memory_order_relaxed)
-                                      * level_cols[0].load(std::memory_order_relaxed)) * 1.8);
+    if( stereoFix.load(std::memory_order_relaxed) )
+    {
+        stereo_slam = stereoSensor.load(std::memory_order_relaxed);
+    }
+    else
+    {
+        const int top_level = max_level_seen.load(std::memory_order_relaxed);
+        if (top_level >= 0) {
+            stereo_slam = (elapsed_cells > (level_rows[0].load(std::memory_order_relaxed)
+                                          * level_cols[0].load(std::memory_order_relaxed)) * 1.8);
+        }
     }
 
     // Using actual time elapsed to do frame as the budget for the next frame

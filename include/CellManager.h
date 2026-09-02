@@ -61,6 +61,17 @@ private:
     // FALSE so an unmodified config reproduces the published behaviour exactly; the
     // deadline experiment collects both arms from one binary by flipping this key.
     std::atomic<bool> overBudgetFix{false};
+    // WHETHER THIS IS ACTUALLY A STEREO RUN, told to us by Settings, which knows the
+    // sensor type. endFrame otherwise INFERS it from the post-mask cell count
+    // (`elapsed_cells > level0_cells * 1.8`), and that inference inverts as soon as the
+    // controller does its job: a genuinely stereo frame masked below the threshold is
+    // classified monocular, its budget is not halved, so it doubles and the mask reopens
+    // to full grid. Measured on EuRoC MH01 at D40 -- 274 of 894 over-budget frames (31%)
+    // misclassified, the mask bimodal at 1-15 and 22 with nothing between 16 and 21, and
+    // 43% of frame-to-frame transitions jumping 10+ grid cells. The sensor type is a
+    // constant of the run and cannot be masked away.
+    std::atomic<bool> stereoSensor{false};
+    std::atomic<bool> stereoFix{false};
     std::atomic<bool> enableOasis = false;
     std::atomic<int> skip_frames = 0;
 
@@ -142,6 +153,8 @@ public:
     std::atomic<bool> oasisRequested{ false };
     void setOasisRequested(bool v) { oasisRequested.store(v, std::memory_order_relaxed); }
     void setOverBudgetFix(bool v) { overBudgetFix.store(v, std::memory_order_relaxed); }
+    void setStereoSensor(bool v) { stereoSensor.store(v, std::memory_order_relaxed); }
+    void setStereoFix(bool v) { stereoFix.store(v, std::memory_order_relaxed); }
 
     // True when a static masking pattern is selected. The extractor consults this so
     // it calls skipCell for pattern-only runs, which do NOT set System.enableOasis.
