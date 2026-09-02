@@ -305,12 +305,57 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         << endl;
 }
 
+// THE SHIPPED SUBSCRIPT IS WRONG BY CONSTRUCTION, and measurably so.
+//
+// vdTrackTotal_ms has two writers, both via InsertTrackTime: the example's main loop
+// appends after EVERY TrackX return, dropped or not, and the drop path below appends 0.0
+// before returning. So a DROPPED frame contributes TWO entries while mLastFrame.mnId --
+// which only advances in the Frame constructors, reached via GrabImage* -- contributes
+// none. The vector's length is therefore always exactly mnId + 1 + 2*drops, and
+// vdTrackTotal_ms[mnId] lags the frame it is meant to describe by TWICE the drop count.
+//
+// Replayed against the reconstructed vector on EuRoC MH01 at a 40% duty throttle, the
+// as-coded predicate reproduces 3682 of 3682 logged drop decisions (so this is what the
+// binary does, not a reading of the source), while the intended predicate disagrees on
+// 1401 of them. Of 3680 decisions the subscript read:
+//
+//     a 0.0, i.e. a drop's own marker        538
+//     a drop's overhead measurement          534
+//     a stale earlier frame's total         2606
+//     THE CORRECT VALUE                        2
+//
+// Two. So the frames this discards are not a deadline policy; they are noise -- and that
+// noise is the mechanism behind the collapse it produces (893 drops, 370 "not enough
+// acceleration", 42 active-map resets, 9 poses of 3682). As shipped, this path cannot be
+// said to implement deadline enforcement at all, which is why the corrected arm exists:
+// "does CORRECT deadline enforcement destroy stereo-inertial init?" is unanswerable
+// without it.
+//
+// The .size() < mnId+1 guard is dead code: size is always mnId + 1 + 2*drops, so it is
+// never true. It could not detect "still processing" in any case, because the example's
+// main loop is synchronous -- TrackX has returned before the next timestamp is offered.
+//
+// Under System.oasisDeadlineIndexFix the test uses the index the last processed frame's
+// timing actually occupies, recorded at each GrabImage* return.
 bool System::ShouldDropFrame(const double &timestamp) const
 {
-    return settings_
-        && settings_->enableDeadlines // Deadline consideration is enabled
-        && mpTracker->mLastFrame.mnId > 0   // We have a valid last frame
-        && mpTracker->mLastFrame.mTimeStamp < timestamp // We are processing a newer frame
+    if( !settings_ || !settings_->enableDeadlines )
+        return false;
+    if( !(mpTracker->mLastFrame.mTimeStamp < timestamp) )
+        return false;
+
+    if( settings_->oasisDeadlineIndexFix )
+    {
+        const size_t idx = mnLastProcessedTrackIdx;
+        // No processed frame yet, or its entry has not been written: DECLINE rather than
+        // guess. The shipped code guessed, and the guess was a drop.
+        if( idx == SIZE_MAX || mpTracker->vdTrackTotal_ms.size() <= idx )
+            return false;
+        const double last_ms = mpTracker->vdTrackTotal_ms[idx];
+        return timestamp < (mpTracker->mLastFrame.mTimeStamp + last_ms / 1000.0);
+    }
+
+    return mpTracker->mLastFrame.mnId > 0   // We have a valid last frame
         &&
         (
             // Is the last frame still processing? (less than expected size)
@@ -466,6 +511,12 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
 
     // std::cout << "start GrabImageStereo" << std::endl;
     Sophus::SE3f Tcw = mpTracker->GrabImageStereo(imLeftToFeed,imRightToFeed,timestamp,filename);
+#ifdef REGISTER_TIMES
+    // The caller appends THIS frame's total next, so the index it will occupy is
+    // the current size. Captured here rather than derived from mnId, which does not
+    // advance for a dropped frame while the vector does.
+    mnLastProcessedTrackIdx = mpTracker->vdTrackTotal_ms.size();
+#endif
 
     // std::cout << "out grabber" << std::endl;
 
@@ -554,6 +605,12 @@ Sophus::SE3f System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const
             mpTracker->GrabImuData(vImuMeas[i_imu]);
 
     Sophus::SE3f Tcw = mpTracker->GrabImageRGBD(imToFeed,imDepthToFeed,timestamp,filename);
+#ifdef REGISTER_TIMES
+    // The caller appends THIS frame's total next, so the index it will occupy is
+    // the current size. Captured here rather than derived from mnId, which does not
+    // advance for a dropped frame while the vector does.
+    mnLastProcessedTrackIdx = mpTracker->vdTrackTotal_ms.size();
+#endif
 
     unique_lock<mutex> lock2(mMutexState);
     mTrackingState = mpTracker->mState;
@@ -638,6 +695,12 @@ Sophus::SE3f System::TrackMonocular(const cv::Mat &im, const double &timestamp, 
             mpTracker->GrabImuData(vImuMeas[i_imu]);
 
     Sophus::SE3f Tcw = mpTracker->GrabImageMonocular(imToFeed,timestamp,filename);
+#ifdef REGISTER_TIMES
+    // The caller appends THIS frame's total next, so the index it will occupy is
+    // the current size. Captured here rather than derived from mnId, which does not
+    // advance for a dropped frame while the vector does.
+    mnLastProcessedTrackIdx = mpTracker->vdTrackTotal_ms.size();
+#endif
 
     unique_lock<mutex> lock2(mMutexState);
     mTrackingState = mpTracker->mState;

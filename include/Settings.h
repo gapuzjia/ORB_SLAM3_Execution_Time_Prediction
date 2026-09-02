@@ -125,6 +125,9 @@ namespace ORB_SLAM3 {
 
         // TODO: Enable for more research, need to expand with other stats
         bool enableDeadlines = false;
+        // Opt-in correction for ShouldDropFrame's misaligned subscript. See
+        // System::ShouldDropFrame for what it reads as shipped, and why.
+        bool oasisDeadlineIndexFix = false;
         bool enableFOV = false;
         bool enableOasis = false;
         int maskHeight = 0;

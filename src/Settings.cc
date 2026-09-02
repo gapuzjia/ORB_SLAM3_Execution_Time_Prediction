@@ -487,6 +487,14 @@ namespace ORB_SLAM3 {
         thFarPoints_ = readParameter<float>(fSettings,"System.thFarPoints",found,false);
         
         enableDeadlines = (bool)readParameter<int>(fSettings,"System.enableDeadlines",found,false);
+        {
+            bool difFound = false;
+            oasisDeadlineIndexFix =
+                (bool)readParameter<int>(fSettings,"System.oasisDeadlineIndexFix",difFound,false);
+            if(oasisDeadlineIndexFix)
+                cout << "Deadline drop test indexes the LAST PROCESSED FRAME's own timing entry "
+                        "(System.oasisDeadlineIndexFix)" << endl;
+        }
         if(enableDeadlines)
         {
             cout << "Deadlines enabled, will skip frames!" << endl;

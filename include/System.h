@@ -216,6 +216,14 @@ public:
     // Deadline configuration
     bool ShouldDropFrame(const double &timestamp) const;
 
+    // WHERE THE LAST PROCESSED FRAME'S TIMING ACTUALLY LANDED in vdTrackTotal_ms.
+    // ShouldDropFrame subscripts that vector by mLastFrame.mnId, which is wrong by
+    // construction -- see the comment there. Recorded immediately after each GrabImage*
+    // returns, which is the index the caller's InsertTrackTime is about to fill.
+    // SIZE_MAX means "no processed frame yet", so the drop test must decline rather than
+    // guess.
+    size_t mnLastProcessedTrackIdx = SIZE_MAX;
+
     // Dump MapPoints? 
     void AppendMapPointsToCSV(const long unsigned int& keyFrame_id, const Eigen::Vector3f& x3D, const std::string& filename);
 
