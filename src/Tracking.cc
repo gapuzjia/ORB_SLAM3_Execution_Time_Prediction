@@ -190,7 +190,23 @@ void Tracking::LocalMapStats2File()
     ofstream f;
     f.open("LocalMapTimeStats.txt");
     f << fixed << setprecision(6);
-    f << "#Stereo rect[ms], MP culling[ms], MP creation[ms], LBA[ms], KF culling[ms], Total[ms]" << endl;
+    // THE HEADER NAMED TWO COLUMNS IT DOES NOT CONTAIN. Field 1 was labelled
+    // "Stereo rect[ms]" and holds vdKFInsert_ms, keyframe-insertion time -- local mapping
+    // does no stereo rectification. Field 4 was labelled "LBA[ms]" and holds
+    // vdLBASync_ms, which LocalMapping.cc:246 fills with timeKFCulling_ms -- the SAME
+    // value it pushes into vdKFCullingSync_ms one line later. So columns 4 and 5 were
+    // identical in every row of every run ever collected here (a seat measured it: 698
+    // identical pairs in one EuRoC run) and neither was local BA time.
+    //
+    // The genuine per-BA timing is vdLBA_ms, pushed at LocalMapping.cc:165 inside the same
+    // `if(b_doneLBA)` block as the vnLBA_* counters -- so it is event-aligned with them by
+    // construction. It was reaching only the ExecMean averages and never a per-event file.
+    // LBA_Stats below now uses it, which is where a per-BA time belongs.
+    //
+    // Renaming rather than re-pushing: what LocalMapping records is its business, and a
+    // column whose header tells the truth is more useful than a column silently
+    // redefined. The duplication is left visible and documented.
+    f << "#KF insert[ms], MP culling[ms], MP creation[ms], KF culling (dup)[ms], KF culling[ms], Total[ms]" << endl;
     // SAME DEFECT AS TrackStats2File, and the same correction: alignment is a LENGTH
     // TEST, not a bound. Each loop was bounded by one vector's size and then indexed five
     // siblings, and the local mapper does not append to them in lockstep -- local BA does
@@ -223,13 +239,19 @@ void Tracking::LocalMapStats2File()
     // codebase where a correct-looking check that could not fire cost four crash
     // investigations, "obviously right" beats "actually right but looks wrong".
     auto emit_field = [&f](bool ok, double v) { if(ok) { f << v; } f << ","; };
+    // GUARD ON THE ALIGNMENT FLAG, NOT ON emptiness. My first version wrote
+    // `v.empty() ? 0.0 : v[i]`, which protects the empty case and NOT the case this whole
+    // function exists for: a vector that is non-empty but SHORTER than the timeline still
+    // got indexed at i, out of bounds, and only then handed to a guard that discards the
+    // value. The argument is evaluated before the call. A seat found it. The read now
+    // happens only when the flag says the vector is exactly as long as the timeline.
     for(size_t i=0; i<n_lm; ++i)
     {
-        emit_field(lm_ins,   mpLocalMapper->vdKFInsert_ms.empty()      ? 0.0 : mpLocalMapper->vdKFInsert_ms[i]);
-        emit_field(lm_cull,  mpLocalMapper->vdMPCulling_ms.empty()     ? 0.0 : mpLocalMapper->vdMPCulling_ms[i]);
-        emit_field(lm_creat, mpLocalMapper->vdMPCreation_ms.empty()    ? 0.0 : mpLocalMapper->vdMPCreation_ms[i]);
-        emit_field(lm_lba,   mpLocalMapper->vdLBASync_ms.empty()       ? 0.0 : mpLocalMapper->vdLBASync_ms[i]);
-        emit_field(lm_kfc,   mpLocalMapper->vdKFCullingSync_ms.empty() ? 0.0 : mpLocalMapper->vdKFCullingSync_ms[i]);
+        emit_field(lm_ins,   lm_ins   ? mpLocalMapper->vdKFInsert_ms[i]      : 0.0);
+        emit_field(lm_cull,  lm_cull  ? mpLocalMapper->vdMPCulling_ms[i]     : 0.0);
+        emit_field(lm_creat, lm_creat ? mpLocalMapper->vdMPCreation_ms[i]    : 0.0);
+        emit_field(lm_lba,   lm_lba   ? mpLocalMapper->vdLBASync_ms[i]       : 0.0);
+        emit_field(lm_kfc,   lm_kfc   ? mpLocalMapper->vdKFCullingSync_ms[i] : 0.0);
         f << mpLocalMapper->vdLMTotal_ms[i] << endl;
     }
 
@@ -238,23 +260,25 @@ void Tracking::LocalMapStats2File()
     f.open("LBA_Stats.txt");
     f << fixed << setprecision(6);
     f << "#LBA time[ms],KF opt[#],KF fixed[#],MP[#],Edges[#]" << endl;
-    // The vnLBA_* counters are appended together, only when local BA actually ran, so
-    // they agree with each other but NOT with vdLBASync_ms, which is appended for every
-    // processed keyframe. Emit rows only over the counters' own timeline, and pair the
-    // LBA time only when it too has that length -- which is the only circumstance under
-    // which the pairing means anything.
+    // vdLBA_ms, NOT vdLBASync_ms. Both exist; only one is a per-BA time. vdLBA_ms is
+    // pushed at LocalMapping.cc:165 inside the same `if(b_doneLBA)` block as every
+    // vnLBA_* counter, so it is event-aligned with them BY CONSTRUCTION and no length
+    // test can fail here for a well-formed run. vdLBASync_ms is keyframe-culling time
+    // under an LBA-sounding name, appended once per processed keyframe -- a different
+    // timeline and a different quantity, and pairing it with these counters paired one
+    // event's time with another's numbers.
     const size_t n_lba = mpLocalMapper->vnLBA_KFopt.size();
-    const bool lba_time_ok = (mpLocalMapper->vdLBASync_ms.size() == n_lba);
+    const bool lba_time_ok = (mpLocalMapper->vdLBA_ms.size() == n_lba);
     const bool lba_rest_ok = (mpLocalMapper->vnLBA_KFfixed.size() == n_lba
                               && mpLocalMapper->vnLBA_MPs.size() == n_lba
                               && mpLocalMapper->vnLBA_edges.size() == n_lba);
     if(!lba_time_ok)
         cout << "LBA_Stats: " << n_lba << " local-BA events but "
-             << mpLocalMapper->vdLBASync_ms.size() << " LBA timings (that vector counts "
-             << "processed keyframes, not BA runs); the time column is left empty" << endl;
+             << mpLocalMapper->vdLBA_ms.size() << " LBA timings; the time column is left "
+             << "empty rather than misaligned" << endl;
     for(size_t i=0; i<n_lba; ++i)
     {
-        if(lba_time_ok) { f << mpLocalMapper->vdLBASync_ms[i]; }
+        if(lba_time_ok) { f << mpLocalMapper->vdLBA_ms[i]; }
         f << ",";
         if(lba_rest_ok)
             f << mpLocalMapper->vnLBA_KFopt[i] << "," << mpLocalMapper->vnLBA_KFfixed[i]
