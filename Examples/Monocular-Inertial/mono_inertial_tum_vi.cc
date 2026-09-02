@@ -166,7 +166,8 @@ int main(int argc, char **argv)
                 // sample -- true of converted uHumans2 (2.9 ms) and the campus ASL tree
                 // (67 ms) -- and this loop then walks off the end of the vector into an
                 // unmapped page. EuRoC never triggers it because its IMU stream ends
-                // 20-115 ms AFTER its last image, which is why it survived this long.
+                // 15-115 ms AFTER its last image (measured over all 11: V2_01 is the tightest at
+                // 15 ms, five IMU samples at 200 Hz), which is why it survived this long.
                 while(first_imu[seq] < (int)vTimestampsImu[seq].size() &&
                       vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][ni])
                 {
