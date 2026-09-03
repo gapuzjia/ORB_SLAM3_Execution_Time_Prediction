@@ -525,8 +525,12 @@ if(realsense2_FOUND)
     )
 endif()
 
-# Added Settings for Metrics Keeping
-add_definitions(-DREGISTER_TIMES)
+# Detailed per-stage metrics are optional. Core attempt/deadline accounting must build
+# and behave correctly in either mode.
+option(ORB_SLAM3_REGISTER_TIMES "Collect detailed TrackingTimeStats instrumentation" ON)
+if(ORB_SLAM3_REGISTER_TIMES)
+    add_definitions(-DREGISTER_TIMES)
+endif()
 add_definitions(-DOASIS)
 
 # Build examples

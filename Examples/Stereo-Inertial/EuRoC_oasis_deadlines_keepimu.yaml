@@ -122,9 +122,5 @@ Viewer.imageViewScale: 1.0
 # System.cc:311, which is why every OASIS run ever collected here reports skipped = 0
 # regardless of how the host performed.
 System.enableOasis: 1
-System.oasisStereoFix: 1
-System.oasisOverBudgetFix: 1
-System.oasisDeadlineIndexFix: 1
-System.oasisDropAccountingFix: 1
 System.oasisDeadlineKeepImu: 1
 System.enableDeadlines: 1

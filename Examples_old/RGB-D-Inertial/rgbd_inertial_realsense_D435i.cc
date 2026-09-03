@@ -425,19 +425,14 @@ int main(int argc, char **argv) {
 #endif
         }
 
-#ifdef REGISTER_TIMES
         std::chrono::steady_clock::time_point t_Start_Track = std::chrono::steady_clock::now();
-#endif
         // Pass the image to the SLAM system
         SLAM.TrackRGBD(im, depth, timestamp, vImuMeas);
 
-#ifdef REGISTER_TIMES
         std::chrono::steady_clock::time_point t_End_Track = std::chrono::steady_clock::now();
 
         t_track = t_resize + std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t_End_Track - t_Start_Track).count();
-        SLAM.InsertTrackTime(t_track);
-        ORB_SLAM3::CellManager::getInstance().endFrame(tframe, t_track);
-#endif
+        SLAM.CompleteFrameAttempt(timestamp, t_track);
 
         // Clear the previous IMU measurements to load the new ones
         vImuMeas.clear();

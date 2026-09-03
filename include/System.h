@@ -26,6 +26,8 @@
 #include<stdlib.h>
 #include<string>
 #include<thread>
+#include<cstdint>
+#include<chrono>
 #include<opencv2/core/core.hpp>
 
 #include "Tracking.h"
@@ -216,14 +218,6 @@ public:
     // Deadline configuration
     bool ShouldDropFrame(const double &timestamp) const;
 
-    // WHERE THE LAST PROCESSED FRAME'S TIMING ACTUALLY LANDED in vdTrackTotal_ms.
-    // ShouldDropFrame subscripts that vector by mLastFrame.mnId, which is wrong by
-    // construction -- see the comment there. Recorded immediately after each GrabImage*
-    // returns, which is the index the caller's InsertTrackTime is about to fill.
-    // SIZE_MAX means "no processed frame yet", so the drop test must decline rather than
-    // guess.
-    size_t mnLastProcessedTrackIdx = SIZE_MAX;
-
     // Dump MapPoints? 
     void AppendMapPointsToCSV(const long unsigned int& keyFrame_id, const Eigen::Vector3f& x3D, const std::string& filename);
 
@@ -234,10 +228,28 @@ public:
 #ifdef REGISTER_TIMES
     void InsertRectTime(const double& time);
     void InsertResizeTime(const double& time);
-    void InsertTrackTime(const double& time);
 #endif
+    void InsertTrackTime(const double& time);
+
+    // Finish exactly one input attempt. This remains available without REGISTER_TIMES:
+    // it owns core deadline state and the schema-2 execution record.
+    void CompleteFrameAttempt(const double& timestamp, const double& total_ms);
 
 private:
+
+    enum class AttemptOutcome { None, Active, ReachedTracking, DeadlineDrop, SlimDrop, ShutdownDrop };
+    void BeginFrameAttempt(const double& timestamp);
+    void MarkReachedTracking();
+    void MarkPreTrackingDrop(AttemptOutcome outcome, const char* source);
+    bool DropAccountingEnabled() const;
+
+    AttemptOutcome mAttemptOutcome = AttemptOutcome::None;
+    uint64_t mnAttemptId = 0;
+    double mAttemptTimestamp = 0.0;
+    std::chrono::steady_clock::time_point mAttemptWallStart;
+    bool mbLastProcessedTimingValid = false;
+    double mLastProcessedTimestamp = 0.0;
+    double mLastProcessedDurationMs = 0.0;
 
     void SaveAtlas(int type);
     bool LoadAtlas(int type);

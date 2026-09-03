@@ -182,8 +182,12 @@ bool CellManager::skipCell(const feature_extraction_state_t& cell)
 }
 
 // Signal the end of a frame and reset elapsed Cells
-void CellManager::endFrame(const double& frame_num, double actualFrameTime)
+void CellManager::endFrame(const double& frame_num, double actualFrameTime,
+                           FrameAttemptOutcome outcome, uint64_t attemptId)
 {
+
+    const bool schema2 = dropAccountingFix.load(std::memory_order_relaxed);
+    const bool pre_tracking_drop = schema2 && outcome != FrameAttemptOutcome::ReachedTracking;
 
     // if we're skipping frames, note it and decrement the number of frames we need to skip
     //
@@ -201,13 +205,13 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     //   frame=3 actual=40ms  skipped=1 (likewise)
     const bool oasis_active = enableOasis && oasisRequested.load(std::memory_order_relaxed);
     bool was_skipped = false;
-    if( oasis_active && skip_frames )
+    if( !pre_tracking_drop && oasis_active && skip_frames )
     {
         std::cout << "Skipped/Dropped frame " << frame_num << std::endl;
         was_skipped = true;
         skip_frames--;
     }
-    else if( !oasis_active )
+    else if( !pre_tracking_drop && !oasis_active )
     {
         // Keep the actuator inert rather than merely unread, so no later frame inherits
         // a nonzero count and the budget path below cannot branch on stale state.
@@ -215,55 +219,85 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime)
     }
 
     //execution time prediction-------------------------
-    // Open the log file in truncate mode so each program run overwrites the file
-    std::ofstream et_log("exec_time_eval.txt", std::ios::app);
+    // Schema 2 truncates on its own first open, then appends. Schema 1 deliberately
+    // preserves the artifact's legacy append behavior.
+    static bool schema2_initialized = false;
+    static std::atomic<bool> legacy_header_written(false);
+    const bool first_schema2_open = schema2 && !schema2_initialized;
+    std::ofstream et_log("exec_time_eval.txt",
+                         first_schema2_open ? std::ios::trunc : std::ios::app);
 
     if (!et_log.is_open()) {
          std::cerr << "Error opening exec_time_eval.txt!" << std::endl;
         return;
     }
 
-    static std::atomic<bool> header_written(false);
-    if (!header_written.exchange(true)) {
+    const bool write_header = schema2 ? first_schema2_open
+                                      : !legacy_header_written.exchange(true);
+    if (write_header) {
         et_log << "frame,predicted_ms,actual_ms,avg_cells_per_frame,actual_cells,skipped,mask_w,mask_h";
         for (int l = 0; l < 8; ++l) et_log << ",L" << l;
         et_log << "\n";
+        if(schema2)
+            schema2_initialized = true;
     } 
 
-    if(g_pending_pred_ms >= 0.0)
+    if(schema2 || g_pending_pred_ms >= 0.0)
     {        
        et_log << std::fixed << std::setprecision(6)
-           << frame_num << "," << g_pending_pred_ms << "," << actualFrameTime << ","
-           << getAverageCellsPerFrame() << "," << elapsed_cells << "," << (was_skipped ? 1 : 0) << ","
-           << FOV_MASK.width << "," << FOV_MASK.height;
+           << frame_num << "," << (pre_tracking_drop ? -1.0 : g_pending_pred_ms) << "," << actualFrameTime << ","
+           << getAverageCellsPerFrame() << "," << (pre_tracking_drop ? 0 : elapsed_cells.load(std::memory_order_relaxed)) << ","
+           << (pre_tracking_drop ? 2 : (was_skipped ? 1 : 0)) << ","
+           << (pre_tracking_drop ? 0 : FOV_MASK.width) << ","
+           << (pre_tracking_drop ? 0 : FOV_MASK.height);
 
         // Append per-level cell counts (L0..L7). If fewer levels exist, pad with zeros.
         for (int l = 0; l < 8; ++l)
-            et_log << "," << (static_cast<size_t>(l) < kMaxPyramidLevels
-                              ? cells_per_level[l].load(std::memory_order_relaxed) : 0);
+            et_log << "," << (pre_tracking_drop ? 0 :
+                              (static_cast<size_t>(l) < kMaxPyramidLevels
+                               ? cells_per_level[l].load(std::memory_order_relaxed) : 0));
 
         et_log << "\n";
         et_log.flush();
 
 
 
-    g_pending_pred_ms = -1.0;
+    if(!pre_tracking_drop)
+        g_pending_pred_ms = -1.0;
     }
 
     //end exection time prediction log--------------------------
 
+
+    // A schema-2 pre-tracking drop is only an observation. It must not consume a
+    // pending prediction, adaptive skip credit, cell history, or controller state.
+    if(pre_tracking_drop)
+    {
+        // The timestamp is printed EXACTLY as the CSV's frame column prints it (fixed,
+        // 6 decimals), because the runner pairs this event with that row by text. The
+        // stream's own precision is whatever the example left it at -- 17 significant
+        // digits in stereo_inertial_euroc, the default 6 elsewhere, which would print
+        // 1.40364e+09 and pair with nothing.
+        std::cout << "R4_EXEC attempt=" << attemptId << " timestamp="
+                  << std::fixed << std::setprecision(6) << frame_num
+                  << " skipped=2 overhead_ms=" << actualFrameTime << std::endl;
+        std::cout.unsetf(std::ios_base::floatfield);
+        return;
+    }
 
     // if no Cells were recorded, return
     if(elapsed_cells == 0)
     {
         // NOTE, as-shipped and deliberately left alone: this formula is
         // `1/ms x cells`, not `ms / (ms/cell)` -- dimensionally it is not a cell count at
-        // all, and it disagrees with the budget computed 30 lines below. It was
-        // unobservable while a local shadowed the member (nothing ever read it), and it is
-        // reached only on a frame that extracted zero cells. Publishing the real budget
-        // makes this line's output visible for the first time, so it is flagged here
-        // rather than corrected: changing it would change published behaviour on a path
-        // this experiment does not exercise.
+        // all, and it disagrees with the budget computed 30 lines below. It is reached only
+        // on a frame that extracted zero cells, and it is STILL UNOBSERVABLE even now that
+        // frame_budget is a real member: this branch returns before printStats, and the
+        // next frame that reaches the publish site below overwrites the value before its
+        // own printStats runs. (An earlier version of this comment claimed the value had
+        // become visible; the 2026-09-02 read-only investigation of the D40 runs showed it
+        // never reaches cellManager.txt.) Flagged rather than corrected: changing it would
+        // change as-shipped behaviour on a path this experiment does not exercise.
         frame_budget = static_cast<int>(1.0 / actualFrameTime * getAverageCellsPerFrame());
         return;
     }
@@ -525,4 +559,3 @@ void CellManager::printStats(const double& frame_num, const double& frameTimesta
     }
 }
 }
-

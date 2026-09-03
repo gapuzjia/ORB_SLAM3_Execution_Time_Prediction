@@ -495,6 +495,28 @@ namespace ORB_SLAM3 {
                 cout << "Deadline drop test indexes the LAST PROCESSED FRAME's own timing entry "
                         "(System.oasisDeadlineIndexFix)" << endl;
         }
+        {
+            bool kiFound = false;
+            oasisDeadlineKeepImu =
+                (bool)readParameter<int>(fSettings,"System.oasisDeadlineKeepImu",kiFound,false);
+            if(oasisDeadlineKeepImu)
+                cout << "IMU samples are ingested BEFORE the deadline/Slim drop decision "
+                        "(System.oasisDeadlineKeepImu)" << endl;
+        }
+        {
+            bool dafFound = false;
+            oasisDropAccountingFix =
+                (bool)readParameter<int>(fSettings,"System.oasisDropAccountingFix",dafFound,false);
+            CellManager::getInstance().setDropAccountingFix(oasisDropAccountingFix);
+            if(oasisDropAccountingFix && !oasisDeadlineIndexFix)
+            {
+                cerr << "System.oasisDropAccountingFix requires "
+                        "System.oasisDeadlineIndexFix=1" << endl;
+                exit(-1);
+            }
+            if(oasisDropAccountingFix)
+                cout << "R4 structured pre-tracking-drop accounting enabled" << endl;
+        }
         if(enableDeadlines)
         {
             cout << "Deadlines enabled, will skip frames!" << endl;
@@ -568,6 +590,12 @@ namespace ORB_SLAM3 {
         }
 
         enableOmegaSLAM = (bool)readParameter<int>(fSettings,"System.enableOmegaSLAM",found,false);
+        if(enableOmegaSLAM && oasisDropAccountingFix)
+        {
+            cerr << "System.oasisDropAccountingFix is incompatible with OmegaSLAM: "
+                    "Omega drops occur after IMU ingestion" << endl;
+            exit(-1);
+        }
         if(enableOmegaSLAM)
         {
             cout << "omegaSLAM enabled!" << endl;

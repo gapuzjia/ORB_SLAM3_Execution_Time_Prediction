@@ -130,8 +130,8 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     vdPosePred_ms.clear();
     vdLMTrack_ms.clear();
     vdNewKF_ms.clear();
-    vdTrackTotal_ms.clear();
 #endif
+    vdTrackTotal_ms.clear();
 }
 
 #ifdef REGISTER_TIMES

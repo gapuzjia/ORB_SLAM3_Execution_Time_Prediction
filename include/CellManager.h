@@ -1,10 +1,13 @@
 #pragma once
+#ifndef ORB_SLAM3_CELL_MANAGER_H
+#define ORB_SLAM3_CELL_MANAGER_H
 
 #include <array>
 #include <atomic>
 #include <vector>
 #include <memory>
 #include <chrono>
+#include <cstdint>
 
 namespace ORB_SLAM3 
 {
@@ -37,8 +40,17 @@ struct feature_extraction_state_t
 
 class CellManager 
 {
+public:
+    enum class FrameAttemptOutcome
+    {
+        ReachedTracking = 0,
+        PreTrackingDeadline = 1,
+        PreTrackingSlim = 2,
+        PreTrackingShutdown = 3
+    };
+
 private:
-    std::atomic<int> elapsed_cells;
+    std::atomic<int> elapsed_cells{0};
     std::vector<int> cells_per_frame;
     // Fixed-capacity atomic arrays, NOT vectors. skipCell() runs on the per-cell hot
     // path from both stereo extractor threads (~2700 calls/frame). A vector must be
@@ -72,6 +84,7 @@ private:
     // constant of the run and cannot be masked away.
     std::atomic<bool> stereoSensor{false};
     std::atomic<bool> stereoFix{false};
+    std::atomic<bool> dropAccountingFix{false};
     std::atomic<bool> enableOasis = false;
     std::atomic<int> skip_frames = 0;
 
@@ -112,7 +125,7 @@ private:
     std::atomic<int>    maskDensityPct{ 50 };
 
     // an instance of the MASK struct we'll use!
-    mask_t FOV_MASK;
+    mask_t FOV_MASK{0, 0};
 
     // Grid dimensions per pyramid level, registered by skipCell(). Same rationale as
     // cells_per_level: fixed capacity, atomic, no locking on the hot path. Both
@@ -155,6 +168,7 @@ public:
     void setOverBudgetFix(bool v) { overBudgetFix.store(v, std::memory_order_relaxed); }
     void setStereoSensor(bool v) { stereoSensor.store(v, std::memory_order_relaxed); }
     void setStereoFix(bool v) { stereoFix.store(v, std::memory_order_relaxed); }
+    void setDropAccountingFix(bool v) { dropAccountingFix.store(v, std::memory_order_relaxed); }
 
     // True when a static masking pattern is selected. The extractor consults this so
     // it calls skipCell for pattern-only runs, which do NOT set System.enableOasis.
@@ -176,7 +190,7 @@ public:
     bool skipCell(const feature_extraction_state_t&);
 
     // Signal the end of a frame and reset elapsed cells, and actual time to do frame
-    void endFrame(const double&, double);
+    void endFrame(const double&, double, FrameAttemptOutcome, uint64_t attemptId);
 
     // Calculate average cells per frame
     double getAverageCellsPerFrame() const;
@@ -195,3 +209,5 @@ private:
 };
 
 } // namespace ORB_SLAM3
+
+#endif // ORB_SLAM3_CELL_MANAGER_H

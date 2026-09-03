@@ -186,11 +186,8 @@ int main(int argc, char **argv)
 
             std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
 
-#ifdef REGISTER_TIMES
             t_track = t_rect + t_resize + std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t2 - t1).count();
-            SLAM.InsertTrackTime(t_track);
-            ORB_SLAM3::CellManager::getInstance().endFrame(tframe, t_track);
-#endif
+            SLAM.CompleteFrameAttempt(tframe, t_track);
 
             double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
 

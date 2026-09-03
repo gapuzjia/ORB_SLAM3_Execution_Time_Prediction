@@ -145,22 +145,14 @@ int main(int argc, char **argv)
             // clahe
             //clahe->apply(imLeft,imLeft);
             //clahe->apply(imRight,imRight);
-#ifdef REGISTER_TIMES
             std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
-#endif
 
             // Pass the image to the SLAM system
             SLAM.TrackStereo(imLeft, imRight, timestamp);
 
-#ifdef REGISTER_TIMES
             std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
-#endif
-
-#ifdef REGISTER_TIMES
             t_track = t_resize + std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t2 - t1).count();
-            SLAM.InsertTrackTime(t_track);
-            ORB_SLAM3::CellManager::getInstance().endFrame(tframe, t_track);
-#endif
+            SLAM.CompleteFrameAttempt(timestamp, t_track);
 
 
         }

@@ -25,6 +25,7 @@
 #include <pangolin/pangolin.h>
 #endif
 #include "SlimSLAM.hpp"
+#include "CellManager.h"
 #include <iomanip>
 #include <openssl/md5.h>
 #include <boost/serialization/base_object.hpp>
@@ -35,6 +36,7 @@
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/xml_iarchive.hpp>
 #include <boost/archive/xml_oarchive.hpp>
+#include <stdexcept>
 
 namespace ORB_SLAM3
 {
@@ -107,6 +109,14 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     }
     else{
         settings_ = nullptr;
+        CellManager::getInstance().setDropAccountingFix(false);
+        cv::FileNode r4Node = fsSettings["System.oasisDropAccountingFix"];
+        if(!r4Node.empty() && static_cast<int>(r4Node) != 0)
+        {
+            cerr << "System.oasisDropAccountingFix requires File.version: \"1.0\" "
+                    "so its dependency checks can be enforced" << endl;
+            exit(-1);
+        }
         cv::FileNode node = fsSettings["System.LoadAtlasFromFile"];
         if(!node.empty() && node.isString())
         {
@@ -119,6 +129,18 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
             mStrSaveAtlasToFile = (string)node;
         }
     }
+
+    cout << "OASIS_RECEIPT schema="
+         << ((settings_ && settings_->oasisDropAccountingFix) ? 2 : 1)
+         << " drop_accounting="
+         << ((settings_ && settings_->oasisDropAccountingFix) ? 1 : 0)
+         << " register_times="
+#ifdef REGISTER_TIMES
+         << 1
+#else
+         << 0
+#endif
+         << endl;
 
     node = fsSettings["loopClosing"];
     bool activeLC = true;
@@ -335,25 +357,23 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 // never true. It could not detect "still processing" in any case, because the example's
 // main loop is synchronous -- TrackX has returned before the next timestamp is offered.
 //
-// Under System.oasisDeadlineIndexFix the test uses the index the last processed frame's
-// timing actually occupies, recorded at each GrabImage* return.
+// Under System.oasisDeadlineIndexFix the test uses the last processed attempt's cached
+// timestamp and caller-measured duration. It does not depend on this vector's layout;
+// that is required once R4 deliberately removes both early-drop timing entries.
 bool System::ShouldDropFrame(const double &timestamp) const
 {
     if( !settings_ || !settings_->enableDeadlines )
         return false;
-    if( !(mpTracker->mLastFrame.mTimeStamp < timestamp) )
-        return false;
 
     if( settings_->oasisDeadlineIndexFix )
     {
-        const size_t idx = mnLastProcessedTrackIdx;
-        // No processed frame yet, or its entry has not been written: DECLINE rather than
-        // guess. The shipped code guessed, and the guess was a drop.
-        if( idx == SIZE_MAX || mpTracker->vdTrackTotal_ms.size() <= idx )
+        if(!mbLastProcessedTimingValid || timestamp <= mLastProcessedTimestamp)
             return false;
-        const double last_ms = mpTracker->vdTrackTotal_ms[idx];
-        return timestamp < (mpTracker->mLastFrame.mTimeStamp + last_ms / 1000.0);
+        return timestamp < (mLastProcessedTimestamp + mLastProcessedDurationMs / 1000.0);
     }
+
+    if( !(mpTracker->mLastFrame.mTimeStamp < timestamp) )
+        return false;
 
     return mpTracker->mLastFrame.mnId > 0   // We have a valid last frame
         &&
@@ -363,6 +383,44 @@ bool System::ShouldDropFrame(const double &timestamp) const
             // Did we miss the deadline? (convert ms to s, do all operations in s)
             || timestamp - (mpTracker->mLastFrame.mTimeStamp + mpTracker->vdTrackTotal_ms[mpTracker->mLastFrame.mnId] / 1000.0 ) < 0.0f
         );
+}
+
+bool System::DropAccountingEnabled() const
+{
+    return settings_ && settings_->oasisDropAccountingFix;
+}
+
+void System::BeginFrameAttempt(const double& timestamp)
+{
+    if(DropAccountingEnabled() && mAttemptOutcome != AttemptOutcome::None)
+        throw std::logic_error("R4 protocol error: a new input overlapped an incomplete attempt");
+    if(mbLastProcessedTimingValid && timestamp < mLastProcessedTimestamp)
+        mbLastProcessedTimingValid = false;
+    ++mnAttemptId;
+    mAttemptTimestamp = timestamp;
+    mAttemptWallStart = std::chrono::steady_clock::now();
+    mAttemptOutcome = AttemptOutcome::Active;
+}
+
+void System::MarkReachedTracking()
+{
+    if(DropAccountingEnabled() && mAttemptOutcome != AttemptOutcome::Active)
+        throw std::logic_error("R4 protocol error: GrabImage entered without an active attempt");
+    mAttemptOutcome = AttemptOutcome::ReachedTracking;
+}
+
+void System::MarkPreTrackingDrop(AttemptOutcome outcome, const char* source)
+{
+    if(DropAccountingEnabled() && mAttemptOutcome != AttemptOutcome::Active)
+        throw std::logic_error("R4 protocol error: pre-tracking drop without an active attempt");
+    mAttemptOutcome = outcome;
+    if(DropAccountingEnabled())
+    {
+        const std::streamsize oldPrecision = cout.precision();
+        cout << "R4_DROP attempt=" << mnAttemptId << " timestamp=" << std::setprecision(17)
+             << mAttemptTimestamp << " source=" << source << endl;
+        cout.precision(oldPrecision);
+    }
 }
 
 void System::AppendMapPointsToCSV(const long unsigned int& keyFrame_id, const Eigen::Vector3f& x3D, const std::string& filename)
@@ -398,10 +456,29 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
         exit(-1);
     }
 
+    BeginFrameAttempt(timestamp);
+
+    // R3 (System.oasisDeadlineKeepImu): the IMU samples belong to the timeline, not to the
+    // frame they arrived with. As shipped they are fed only after the two early returns
+    // below, so a dropped frame takes its samples with it; the next PreintegrateIMU then
+    // spans two frame intervals with the first interval's samples missing, and stereo-
+    // inertial initialisation starves (entry 110, drop-fix plan F1). Neither Reset() nor
+    // ResetActiveMap() touches mlQueueImuData, so feeding before the reset block below is
+    // safe; only Track() clears the queue, on a timestamp rewind. Under the flag the
+    // shipped loop further down is skipped so no sample is fed twice.
+    bool imuFedEarly = false;
+    if(settings_ && settings_->oasisDeadlineKeepImu && mSensor == System::IMU_STEREO)
+    {
+        for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
+            mpTracker->GrabImuData(vImuMeas[i_imu]);
+        imuFedEarly = true;
+    }
+
     // Drop frames if the system is past deadline or the last frame is still being processed
     if( ShouldDropFrame(timestamp) )
     {
         cout << "Dropping frame " << timestamp << endl;
+        MarkPreTrackingDrop(AttemptOutcome::DeadlineDrop, "deadline");
         InsertTrackTime(0.0);   // to keep track of dropped frames compute time
         return Sophus::SE3f();  // return empty, since we won't be processing frame
     }
@@ -415,6 +492,7 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
         {
             skip++;
             cout << "Dropping frame " << timestamp << endl;
+            MarkPreTrackingDrop(AttemptOutcome::SlimDrop, "slim");
             InsertTrackTime(0.0);   // to keep track of dropped frames compute time
             return Sophus::SE3f();  // return empty, since we won't be processing frame
         }
@@ -481,7 +559,7 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
         }
     }
 
-    if (mSensor == System::IMU_STEREO)
+    if (mSensor == System::IMU_STEREO && !imuFedEarly)
         for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
             mpTracker->GrabImuData(vImuMeas[i_imu]);
 
@@ -510,13 +588,8 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
     }
 
     // std::cout << "start GrabImageStereo" << std::endl;
+    MarkReachedTracking();
     Sophus::SE3f Tcw = mpTracker->GrabImageStereo(imLeftToFeed,imRightToFeed,timestamp,filename);
-#ifdef REGISTER_TIMES
-    // The caller appends THIS frame's total next, so the index it will occupy is
-    // the current size. Captured here rather than derived from mnId, which does not
-    // advance for a dropped frame while the vector does.
-    mnLastProcessedTrackIdx = mpTracker->vdTrackTotal_ms.size();
-#endif
 
     // std::cout << "out grabber" << std::endl;
 
@@ -542,10 +615,29 @@ Sophus::SE3f System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const
         exit(-1);
     }
 
+    BeginFrameAttempt(timestamp);
+
+    // R3 (System.oasisDeadlineKeepImu): the IMU samples belong to the timeline, not to the
+    // frame they arrived with. As shipped they are fed only after the two early returns
+    // below, so a dropped frame takes its samples with it; the next PreintegrateIMU then
+    // spans two frame intervals with the first interval's samples missing, and stereo-
+    // inertial initialisation starves (entry 110, drop-fix plan F1). Neither Reset() nor
+    // ResetActiveMap() touches mlQueueImuData, so feeding before the reset block below is
+    // safe; only Track() clears the queue, on a timestamp rewind. Under the flag the
+    // shipped loop further down is skipped so no sample is fed twice.
+    bool imuFedEarly = false;
+    if(settings_ && settings_->oasisDeadlineKeepImu && mSensor == System::IMU_RGBD)
+    {
+        for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
+            mpTracker->GrabImuData(vImuMeas[i_imu]);
+        imuFedEarly = true;
+    }
+
     // Drop frames if the system is past deadline or the last frame is still being processed
     if( ShouldDropFrame(timestamp) )
     {
         cout << "Dropping frame " << timestamp << endl;
+        MarkPreTrackingDrop(AttemptOutcome::DeadlineDrop, "deadline");
         InsertTrackTime(0.0);   // to keep track of dropped frames compute time
         return Sophus::SE3f();  // return empty, since we won't be processing frame
     }
@@ -600,17 +692,12 @@ Sophus::SE3f System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const
         }
     }
 
-    if (mSensor == System::IMU_RGBD)
+    if (mSensor == System::IMU_RGBD && !imuFedEarly)
         for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
             mpTracker->GrabImuData(vImuMeas[i_imu]);
 
+    MarkReachedTracking();
     Sophus::SE3f Tcw = mpTracker->GrabImageRGBD(imToFeed,imDepthToFeed,timestamp,filename);
-#ifdef REGISTER_TIMES
-    // The caller appends THIS frame's total next, so the index it will occupy is
-    // the current size. Captured here rather than derived from mnId, which does not
-    // advance for a dropped frame while the vector does.
-    mnLastProcessedTrackIdx = mpTracker->vdTrackTotal_ms.size();
-#endif
 
     unique_lock<mutex> lock2(mMutexState);
     mTrackingState = mpTracker->mState;
@@ -625,7 +712,11 @@ Sophus::SE3f System::TrackMonocular(const cv::Mat &im, const double &timestamp, 
     {
         unique_lock<mutex> lock(mMutexReset);
         if(mbShutDown)
+        {
+            BeginFrameAttempt(timestamp);
+            MarkPreTrackingDrop(AttemptOutcome::ShutdownDrop, "shutdown");
             return Sophus::SE3f();
+        }
     }
 
     if(mSensor!=MONOCULAR && mSensor!=IMU_MONOCULAR)
@@ -634,10 +725,29 @@ Sophus::SE3f System::TrackMonocular(const cv::Mat &im, const double &timestamp, 
         exit(-1);
     }
 
+    BeginFrameAttempt(timestamp);
+
+    // R3 (System.oasisDeadlineKeepImu): the IMU samples belong to the timeline, not to the
+    // frame they arrived with. As shipped they are fed only after the two early returns
+    // below, so a dropped frame takes its samples with it; the next PreintegrateIMU then
+    // spans two frame intervals with the first interval's samples missing, and stereo-
+    // inertial initialisation starves (entry 110, drop-fix plan F1). Neither Reset() nor
+    // ResetActiveMap() touches mlQueueImuData, so feeding before the reset block below is
+    // safe; only Track() clears the queue, on a timestamp rewind. Under the flag the
+    // shipped loop further down is skipped so no sample is fed twice.
+    bool imuFedEarly = false;
+    if(settings_ && settings_->oasisDeadlineKeepImu && mSensor == System::IMU_MONOCULAR)
+    {
+        for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
+            mpTracker->GrabImuData(vImuMeas[i_imu]);
+        imuFedEarly = true;
+    }
+
     // Drop frames if the system is past deadline or the last frame is still being processed
     if( ShouldDropFrame(timestamp) )
     {
         cout << "Dropping frame " << timestamp << endl;
+        MarkPreTrackingDrop(AttemptOutcome::DeadlineDrop, "deadline");
         InsertTrackTime(0.0);   // to keep track of dropped frames compute time
         return Sophus::SE3f();  // return empty, since we won't be processing frame
     }
@@ -690,17 +800,12 @@ Sophus::SE3f System::TrackMonocular(const cv::Mat &im, const double &timestamp, 
         }
     }
 
-    if (mSensor == System::IMU_MONOCULAR)
+    if (mSensor == System::IMU_MONOCULAR && !imuFedEarly)
         for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
             mpTracker->GrabImuData(vImuMeas[i_imu]);
 
+    MarkReachedTracking();
     Sophus::SE3f Tcw = mpTracker->GrabImageMonocular(imToFeed,timestamp,filename);
-#ifdef REGISTER_TIMES
-    // The caller appends THIS frame's total next, so the index it will occupy is
-    // the current size. Captured here rather than derived from mnId, which does not
-    // advance for a dropped frame while the vector does.
-    mnLastProcessedTrackIdx = mpTracker->vdTrackTotal_ms.size();
-#endif
 
     unique_lock<mutex> lock2(mMutexState);
     mTrackingState = mpTracker->mState;
@@ -1687,6 +1792,8 @@ void System::ChangeDataset()
     }
 
     mpTracker->NewDataset();
+    mbLastProcessedTimingValid = false;
+    mAttemptOutcome = AttemptOutcome::None;
 }
 
 float System::GetImageScale()
@@ -1704,12 +1811,61 @@ void System::InsertResizeTime(const double& time)
 {
     mpTracker->vdResizeImage_ms.push_back(time);
 }
+#endif
 
 void System::InsertTrackTime(const double& time)
 {
+    if(DropAccountingEnabled() &&
+       (mAttemptOutcome == AttemptOutcome::None || mAttemptOutcome == AttemptOutcome::Active))
+        throw std::logic_error("R4 protocol error: timing insertion has no resolved attempt outcome");
+    if(DropAccountingEnabled() &&
+       (mAttemptOutcome == AttemptOutcome::DeadlineDrop ||
+        mAttemptOutcome == AttemptOutcome::SlimDrop ||
+        mAttemptOutcome == AttemptOutcome::ShutdownDrop))
+        return;
     mpTracker->vdTrackTotal_ms.push_back(time);
 }
-#endif
+
+void System::CompleteFrameAttempt(const double& timestamp, const double& total_ms)
+{
+    // This is the sole supported caller-side completion point; keeping timing and
+    // CellManager consumption together prevents the two records from drifting.
+    if(DropAccountingEnabled())
+    {
+        if(mAttemptOutcome == AttemptOutcome::None)
+            throw std::logic_error("R4 protocol error: completion without an active attempt");
+        if(timestamp != mAttemptTimestamp)
+            throw std::logic_error("R4 protocol error: completion timestamp does not match attempt");
+    }
+
+    const AttemptOutcome outcome = mAttemptOutcome;
+    // Use the core-owned wall interval so REGISTER_TIMES cannot change deadline state
+    // merely by compiling preprocessing instrumentation in or out. This interval is
+    // the caller-visible TrackX return overhead for an early drop.
+    const double coreAttemptMs =
+        std::chrono::duration_cast<std::chrono::duration<double,std::milli>>(
+            std::chrono::steady_clock::now() - mAttemptWallStart).count();
+    // R4 needs a macro-independent measurement. The legacy arm must retain the exact
+    // caller-supplied total (including its historical resize/rectification components).
+    const double attemptTotalMs = DropAccountingEnabled() ? coreAttemptMs : total_ms;
+    InsertTrackTime(attemptTotalMs);
+    if(outcome == AttemptOutcome::ReachedTracking)
+    {
+        mLastProcessedTimestamp = timestamp;
+        mLastProcessedDurationMs = attemptTotalMs;
+        mbLastProcessedTimingValid = true;
+    }
+
+    CellManager::FrameAttemptOutcome cellOutcome = CellManager::FrameAttemptOutcome::ReachedTracking;
+    if(outcome == AttemptOutcome::DeadlineDrop)
+        cellOutcome = CellManager::FrameAttemptOutcome::PreTrackingDeadline;
+    else if(outcome == AttemptOutcome::SlimDrop)
+        cellOutcome = CellManager::FrameAttemptOutcome::PreTrackingSlim;
+    else if(outcome == AttemptOutcome::ShutdownDrop)
+        cellOutcome = CellManager::FrameAttemptOutcome::PreTrackingShutdown;
+    CellManager::getInstance().endFrame(timestamp, attemptTotalMs, cellOutcome, mnAttemptId);
+    mAttemptOutcome = AttemptOutcome::None;
+}
 
 void System::SaveAtlas(int type){
     if(!mStrSaveAtlasToFile.empty())
@@ -1857,4 +2013,3 @@ string System::CalculateCheckSum(string filename, int type)
 }
 
 } //namespace ORB_SLAM
-

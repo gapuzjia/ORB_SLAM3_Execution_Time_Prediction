@@ -202,9 +202,11 @@ public:
     vector<double> vdPosePred_ms;
     vector<double> vdLMTrack_ms;
     vector<double> vdNewKF_ms;
-    vector<double> vdTrackTotal_ms;
-
 #endif
+
+    // Core deadline state, not optional instrumentation. With R4 this contains only
+    // attempts that reached GrabImage*; pre-tracking drops never append to it.
+    vector<double> vdTrackTotal_ms;
 
 protected:
 

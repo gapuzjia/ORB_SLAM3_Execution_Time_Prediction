@@ -128,6 +128,16 @@ namespace ORB_SLAM3 {
         // Opt-in correction for ShouldDropFrame's misaligned subscript. See
         // System::ShouldDropFrame for what it reads as shipped, and why.
         bool oasisDeadlineIndexFix = false;
+        // R4: structured pre-tracking-drop accounting. This deliberately changes the
+        // TrackingTimeStats layout and therefore requires oasisDeadlineIndexFix.
+        bool oasisDropAccountingFix = false;
+        // R3: hand the IMU samples that arrived with an image to the tracker BEFORE the
+        // deadline / SlimSLAM drop decision, so a dropped frame's samples stay on the
+        // timeline. As shipped they are discarded with the frame (the example clears its
+        // buffer on the next iteration), the next preintegration window doubles, and the
+        // ~11 missing samples collapse into one 55 ms step that defeats IMU initialisation
+        // ("not enough acceleration"). Default FALSE: the shipped order is the baseline.
+        bool oasisDeadlineKeepImu = false;
         bool enableFOV = false;
         bool enableOasis = false;
         int maskHeight = 0;
