@@ -1839,15 +1839,28 @@ void System::CompleteFrameAttempt(const double& timestamp, const double& total_m
     }
 
     const AttemptOutcome outcome = mAttemptOutcome;
-    // Use the core-owned wall interval so REGISTER_TIMES cannot change deadline state
-    // merely by compiling preprocessing instrumentation in or out. This interval is
-    // the caller-visible TrackX return overhead for an early drop.
+    // The core-owned wall interval, measured from BeginFrameAttempt. It exists for ONE
+    // purpose: an early drop returns before the caller can time anything meaningful, so
+    // its schema-2 row needs a duration from inside the library. It is NOT a substitute
+    // for the caller's total.
     const double coreAttemptMs =
         std::chrono::duration_cast<std::chrono::duration<double,std::milli>>(
             std::chrono::steady_clock::now() - mAttemptWallStart).count();
-    // R4 needs a macro-independent measurement. The legacy arm must retain the exact
-    // caller-supplied total (including its historical resize/rectification components).
-    const double attemptTotalMs = DropAccountingEnabled() ? coreAttemptMs : total_ms;
+    // THE CALLER'S TOTAL IS AUTHORITATIVE FOR EVERYTHING THE CONTROLLER READS, in both
+    // arms. An earlier version substituted coreAttemptMs whenever R4 was on, on the
+    // grounds that the deadline state should not depend on REGISTER_TIMES. It does not:
+    // `total_ms` is passed by the caller unconditionally, outside any macro guard. What
+    // the substitution DID do was silently drop the example's own preprocessing time --
+    // `t_rect + t_resize`, measured outside the TrackX call -- from the quantity the
+    // corrected deadline predicate caches and compares against. On
+    // Examples/Stereo-Inertial/stereo_inertial_euroc.cc those two timers are 0.f and are
+    // never assigned, so the substitution was a measured no-op there and every run
+    // collected through 2026-09-04 is unaffected (journal 112 addendum 3). But
+    // stereo_inertial_tum_vi.cc, stereo_kitti.cc, the mono and the RealSense examples DO
+    // accumulate them, and there the cache would have been short by the preprocessing
+    // time and the drop decisions would have shifted. Found by two review seats; the
+    // scoping below is what copilot asked for on 2026-09-02.
+    const double attemptTotalMs = total_ms;
     InsertTrackTime(attemptTotalMs);
     if(outcome == AttemptOutcome::ReachedTracking)
     {
@@ -1863,7 +1876,12 @@ void System::CompleteFrameAttempt(const double& timestamp, const double& total_m
         cellOutcome = CellManager::FrameAttemptOutcome::PreTrackingSlim;
     else if(outcome == AttemptOutcome::ShutdownDrop)
         cellOutcome = CellManager::FrameAttemptOutcome::PreTrackingShutdown;
-    CellManager::getInstance().endFrame(timestamp, attemptTotalMs, cellOutcome, mnAttemptId);
+    // A pre-tracking drop's row records the core interval (the caller measured nothing but
+    // the early return); a processed attempt's row records the caller's total, as shipped.
+    const double cellFrameMs =
+        (cellOutcome == CellManager::FrameAttemptOutcome::ReachedTracking) ? attemptTotalMs
+                                                                          : coreAttemptMs;
+    CellManager::getInstance().endFrame(timestamp, cellFrameMs, cellOutcome, mnAttemptId);
     mAttemptOutcome = AttemptOutcome::None;
 }
 
