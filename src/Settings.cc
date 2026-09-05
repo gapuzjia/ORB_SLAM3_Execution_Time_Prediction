@@ -578,6 +578,17 @@ namespace ORB_SLAM3 {
             if(obf)
                 cout << "OASIS over-budget stereo halving CORRECTED (System.oasisOverBudgetFix)" << endl;
         }
+        // DIAGNOSTIC. Disables the controller's catch-up branch (CellManager.h, noCatchUp):
+        // after an over-budget frame the next frame gets the ordinary budget instead of
+        // (100 - t) ms, and frames over 100 ms no longer blank the frame(s) after them.
+        // Default off, so every existing arm is bit-for-bit unchanged.
+        {
+            bool ncuFound = false;
+            const bool ncu = (bool)readParameter<int>(fSettings,"System.oasisNoCatchUp",ncuFound,false);
+            CellManager::getInstance().setNoCatchUp(ncu);
+            if(ncu)
+                cout << "OASIS over-budget catch-up DISABLED: next frame keeps the ordinary budget (System.oasisNoCatchUp)" << endl;
+        }
         if(enableOasis)
         {
             cout << "OASIS enabled" << endl;

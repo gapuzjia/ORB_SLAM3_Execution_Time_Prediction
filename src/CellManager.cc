@@ -367,7 +367,9 @@ void CellManager::endFrame(const double& frame_num, double actualFrameTime,
     if( stereo_slam )
         budget_cells /= 2;
 
-    if( actualFrameTime > frame_time )   // if we're over budget, adjust the frame budget for the next frame
+    // System.oasisNoCatchUp (diagnostic, see CellManager.h): skip the catch-up branch, so an
+    // over-budget frame is followed by the ordinary budget rather than a starved one.
+    if( actualFrameTime > frame_time && !noCatchUp.load(std::memory_order_relaxed) )   // if we're over budget, adjust the frame budget for the next frame
     {
         double frame_time_remaining = actualFrameTime;
         size_t frames_over_budget = 0;

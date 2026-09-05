@@ -73,6 +73,16 @@ private:
     // FALSE so an unmodified config reproduces the published behaviour exactly; the
     // deadline experiment collects both arms from one binary by flipping this key.
     std::atomic<bool> overBudgetFix{false};
+    // DIAGNOSTIC (System.oasisNoCatchUp, default off): disable the over-budget branch of
+    // the budget controller entirely. As shipped, a frame that overran the 50 ms deadline
+    // hands the NEXT frame only what is left of a two-frame window -- (100 - t) ms -- so an
+    // 80 ms frame is followed by a 19% grid, a 95 ms frame by 2.4%, a 100 ms frame by mask 1
+    // (8-12 of 1352 cells), and frames over 100 ms additionally blank the frame(s) after
+    // them via skip_frames. Measured 2026-09-05 on the reference arm at D25/D40: 100% of
+    // the tracking-failure map resets sat on a frame with mask <= 4 (base rate 9-12%).
+    // With this flag the budget after an over-budget frame is the ordinary
+    // frame_time / time_per_cell, and skip_frames is never set.
+    std::atomic<bool> noCatchUp{false};
     // WHETHER THIS IS ACTUALLY A STEREO RUN, told to us by Settings, which knows the
     // sensor type. endFrame otherwise INFERS it from the post-mask cell count
     // (`elapsed_cells > level0_cells * 1.8`), and that inference inverts as soon as the
@@ -166,6 +176,7 @@ public:
     std::atomic<bool> oasisRequested{ false };
     void setOasisRequested(bool v) { oasisRequested.store(v, std::memory_order_relaxed); }
     void setOverBudgetFix(bool v) { overBudgetFix.store(v, std::memory_order_relaxed); }
+    void setNoCatchUp(bool v) { noCatchUp.store(v, std::memory_order_relaxed); }
     void setStereoSensor(bool v) { stereoSensor.store(v, std::memory_order_relaxed); }
     void setStereoFix(bool v) { stereoFix.store(v, std::memory_order_relaxed); }
     void setDropAccountingFix(bool v) { dropAccountingFix.store(v, std::memory_order_relaxed); }
