@@ -127,4 +127,5 @@ Viewer.ViewpointF: 500.0
 System.enableOasis: 1
 System.oasisDeadlineIndexFix: 1
 System.oasisNoCatchUp: 1
+System.oasisDropAccountingFix: 1
 System.enableDeadlines: 1

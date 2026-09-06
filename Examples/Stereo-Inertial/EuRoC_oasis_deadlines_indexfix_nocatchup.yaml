@@ -130,4 +130,12 @@ System.oasisDeadlineIndexFix: 1
 # an over-budget frame is the ordinary frame_time / time_per_cell and no frame is blanked.
 # This is a change to the shipped controller, so it is a diagnostic, not the reference.
 System.oasisNoCatchUp: 1
+# Drop accounting is INSTRUMENTATION, not control: it makes the controller log write one row
+# per frame ATTEMPTED instead of silently consuming the row of the frame that follows a drop.
+# Without it this arm's own mask statistics are unmeasurable -- the stolen row is exactly the
+# frame after a drop, so `cells kept` and `mask med` would be averaged over the frames the mask
+# did not act on (journal 114 s.2), and analyze_stress blanks them. The controller path is
+# untouched: a schema-2 pre-tracking drop consumes no prediction, no skip credit and no cell
+# history, and the deadline test reads the cached last-processed timing, not vdTrackTotal_ms.
+System.oasisDropAccountingFix: 1
 System.enableDeadlines: 1
